@@ -7,12 +7,13 @@ export async function POST(req: NextRequest) {
     const userAgent = req.headers.get("user-agent") || ""
 
     // Rate limit check
-    if (!adminStore.checkRateLimit(ip, 200, 60_000)) {
+    const allowed = await adminStore.checkRateLimit(ip, 200, 60_000)
+    if (!allowed) {
       return NextResponse.json({ error: "rate limited" }, { status: 429 })
     }
 
     const body = await req.json()
-    adminStore.heartbeat({
+    await adminStore.heartbeat({
       ip,
       keyUsed: body.keyUsed || "free",
       page: body.page || "/",
@@ -29,8 +30,10 @@ export async function POST(req: NextRequest) {
 // GET: admin can fetch online users
 export async function GET(req: NextRequest) {
   const token = req.headers.get("x-admin-token") || ""
-  if (!adminStore.validateAdminSession(token)) {
+  const valid = await adminStore.validateAdminSession(token)
+  if (!valid) {
     return NextResponse.json({ error: "未授权" }, { status: 401 })
   }
-  return NextResponse.json(adminStore.getOnlineUsers())
+  const users = await adminStore.getOnlineUsers()
+  return NextResponse.json(users)
 }

@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     const { key } = await req.json()
     if (!key) return NextResponse.json({ valid: false })
 
-    const result = adminStore.checkKey(key)
+    const result = await adminStore.checkKey(key)
     return NextResponse.json(result)
   } catch {
     return NextResponse.json({ valid: false })
