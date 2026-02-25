@@ -57,6 +57,8 @@ const DURATION_MAP: Record<AccessKey["type"], { ms: number; label: string }> = {
   annual:  { ms: 365 * 24 * 60 * 60 * 1000, label: "365天" },
 }
 
+export function getDurationMap() { return DURATION_MAP }
+
 // ─── Store ───────────────────────────────────────────────────────────
 
 class AdminStore {
@@ -102,8 +104,19 @@ class AdminStore {
 
   // ─── Key Management ──────────────────────────────────────────────
 
-  generateKey(type: AccessKey["type"]): AccessKey {
-    const dur = DURATION_MAP[type]
+  generateKey(type: AccessKey["type"], customDays?: number): AccessKey {
+    let durationMs: number
+    let durationLabel: string
+
+    if (customDays && customDays > 0) {
+      durationMs = customDays * 24 * 60 * 60 * 1000
+      durationLabel = `${customDays}天`
+    } else {
+      const dur = DURATION_MAP[type]
+      durationMs = dur.ms
+      durationLabel = dur.label
+    }
+
     const prefix = type === "trial" ? "TRIAL" : type === "weekly" ? "WEEK" : type === "monthly" ? "MONTH" : "ANNUAL"
     const suffix = crypto.randomBytes(4).toString("hex").toUpperCase()
     const key = `DOUU-${prefix}-${suffix}`
@@ -111,8 +124,8 @@ class AdminStore {
       id: crypto.randomUUID(),
       key,
       type,
-      durationMs: dur.ms,
-      durationLabel: dur.label,
+      durationMs,
+      durationLabel,
       createdAt: Date.now(),
       activatedAt: null,
       expiresAt: null,
@@ -120,7 +133,7 @@ class AdminStore {
       status: "unused",
     }
     this.keys.set(key, ak)
-    this.addLog("密钥生成", "admin", `生成 ${type} 密钥: ${key}`, "low")
+    this.addLog("密钥生成", "admin", `生成 ${type} 密钥 (${durationLabel}): ${key}`, "low")
     return ak
   }
 

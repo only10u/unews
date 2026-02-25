@@ -98,7 +98,10 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("dashboard")
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [generateType, setGenerateType] = useState<string>("trial")
+  const [customDays, setCustomDays] = useState<string>("")
+  const [useCustomDays, setUseCustomDays] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [generateError, setGenerateError] = useState("")
   const [keyFilter, setKeyFilter] = useState("all")
   const [logSearch, setLogSearch] = useState("")
   const [logRiskFilter, setLogRiskFilter] = useState("all")
@@ -111,6 +114,7 @@ export default function AdminPage() {
 
   // Seed data state
   const [seedKeyType, setSeedKeyType] = useState<string>("trial")
+  const [seedCustomDays, setSeedCustomDays] = useState<string>("")
   const [seedCount, setSeedCount] = useState(5)
   const [seeding, setSeeding] = useState(false)
   const [seedResult, setSeedResult] = useState("")
@@ -149,10 +153,27 @@ export default function AdminPage() {
 
   const handleGenerateKey = async () => {
     setIsGenerating(true)
+    setGenerateError("")
     try {
-      await fetch("/api/admin/keys", { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": adminToken }, body: JSON.stringify({ type: generateType }) })
-      mutateKeys(); mutateStats()
-    } catch { /* */ }
+      const payload: { type: string; customDays?: number } = { type: generateType }
+      if (useCustomDays && customDays) {
+        payload.customDays = Number(customDays)
+      }
+      const res = await fetch("/api/admin/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) {
+        const err = await res.json()
+        setGenerateError(err.error || "生成失败")
+      } else {
+        mutateKeys(); mutateStats()
+        setGenerateError("")
+      }
+    } catch (e) {
+      setGenerateError("网络错误，请重试")
+    }
     setIsGenerating(false)
   }
 
@@ -183,7 +204,9 @@ export default function AdminPage() {
     try {
       const results = []
       for (let i = 0; i < seedCount; i++) {
-        const res = await fetch("/api/admin/keys", { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": adminToken }, body: JSON.stringify({ type: seedKeyType }) })
+        const payload: { type: string; customDays?: number } = { type: seedKeyType }
+        if (seedCustomDays) payload.customDays = Number(seedCustomDays)
+        const res = await fetch("/api/admin/keys", { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": adminToken }, body: JSON.stringify(payload) })
         if (res.ok) { const k = await res.json(); results.push(k.key) }
       }
       setSeedResult(`成功生成 ${results.length} 个密钥`)
@@ -436,12 +459,50 @@ export default function AdminPage() {
                   <option value="monthly">月卡 (30天)</option>
                   <option value="annual">年卡 (365天)</option>
                 </select>
+
+                {/* Custom days toggle */}
+                <button
+                  onClick={() => setUseCustomDays(!useCustomDays)}
+                  className={cn(
+                    "px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                    useCustomDays
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "bg-secondary text-muted-foreground border-border hover:text-foreground"
+                  )}
+                  title="自定义有效期天数"
+                >
+                  <Settings size={13} />
+                </button>
+
+                {useCustomDays && (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={customDays}
+                      onChange={(e) => setCustomDays(e.target.value)}
+                      placeholder="天数"
+                      min={1}
+                      max={3650}
+                      className="w-20 px-2 py-1.5 rounded-lg bg-input border border-border text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary/40 placeholder:text-muted-foreground/50"
+                    />
+                    <span className="text-[10px] text-muted-foreground">天</span>
+                  </div>
+                )}
+
                 <button onClick={handleGenerateKey} disabled={isGenerating} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 active:scale-[0.98]">
                   {isGenerating ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
                   生成密钥
                 </button>
               </div>
             </div>
+
+            {/* Error message */}
+            {generateError && (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+                <XCircle size={13} className="text-red-400 shrink-0" />
+                <p className="text-xs text-red-400">{generateError}</p>
+              </div>
+            )}
 
             <div className="rounded-xl border border-border/60 bg-card overflow-hidden">
               <div className="overflow-x-auto">
@@ -703,7 +764,7 @@ export default function AdminPage() {
                     <p className="text-[10px] text-muted-foreground">一键批量生成指定类型的密钥</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1 block">密钥类型</label>
                     <select value={seedKeyType} onChange={(e) => setSeedKeyType(e.target.value)} className="w-full px-3 py-2 rounded-lg bg-input border border-border text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary/40">
@@ -712,6 +773,10 @@ export default function AdminPage() {
                       <option value="monthly">月卡 (30天)</option>
                       <option value="annual">年卡 (365天)</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1 block">自定义天数 (可选)</label>
+                    <input type="number" value={seedCustomDays} onChange={(e) => setSeedCustomDays(e.target.value)} min={1} max={3650} placeholder="留空用默认" className="w-full px-3 py-2 rounded-lg bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40" />
                   </div>
                   <div>
                     <label className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-1 block">生成数量</label>
