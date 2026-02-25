@@ -8,10 +8,13 @@ import {
   Volume2,
   VolumeX,
   AlertTriangle,
+  Mic,
+  Music,
 } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { Slider } from "@/components/ui/slider"
 import Image from "next/image"
+import { playDing, playCoinClink, speakTTS } from "@/lib/audio-engine"
 
 // Types
 export interface SoundChannelConfig {
@@ -19,6 +22,7 @@ export interface SoundChannelConfig {
   volume: number
   rate: number
   voice: "male" | "female"
+  mode: "tts" | "tone"  // Mode A = TTS, Mode B = tone
 }
 
 export interface PriceAlertConfig {
@@ -41,11 +45,11 @@ export interface SoundSettings {
 
 const DEFAULT_SETTINGS: SoundSettings = {
   channels: {
-    aggregate: { enabled: false, volume: 70, rate: 1.0, voice: "female" },
-    weibo: { enabled: false, volume: 70, rate: 1.0, voice: "female" },
-    douyin: { enabled: false, volume: 70, rate: 1.0, voice: "female" },
-    gongzhonghao: { enabled: false, volume: 70, rate: 1.0, voice: "female" },
-    price: { enabled: true, volume: 80, rate: 1.0, voice: "male" },
+    aggregate: { enabled: false, volume: 70, rate: 1.0, voice: "female", mode: "tts" },
+    weibo: { enabled: false, volume: 70, rate: 1.0, voice: "female", mode: "tts" },
+    douyin: { enabled: false, volume: 70, rate: 1.0, voice: "female", mode: "tts" },
+    gongzhonghao: { enabled: false, volume: 70, rate: 1.0, voice: "female", mode: "tone" },
+    price: { enabled: true, volume: 80, rate: 1.0, voice: "male", mode: "tts" },
   },
   priceAlert: {
     enabled: true,
@@ -82,10 +86,17 @@ function loadSettings(): SoundSettings {
   if (typeof window === "undefined") return DEFAULT_SETTINGS
   try {
     const saved = localStorage.getItem("dou-u-sound-settings")
-    if (saved) return JSON.parse(saved)
-  } catch {
-    // ignore
-  }
+    if (saved) {
+      const parsed = JSON.parse(saved)
+      // Merge defaults for any missing mode fields
+      for (const key of Object.keys(DEFAULT_SETTINGS.channels)) {
+        if (parsed.channels?.[key] && !parsed.channels[key].mode) {
+          parsed.channels[key].mode = "tts"
+        }
+      }
+      return parsed
+    }
+  } catch { /* ignore */ }
   return DEFAULT_SETTINGS
 }
 
@@ -132,14 +143,31 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
     []
   )
 
+  const testSound = useCallback((key: string) => {
+    const config = settings.channels[key as keyof typeof settings.channels]
+    if (!config) return
+    const vol = config.volume / 100
+    if (config.mode === "tts") {
+      const label = CHANNEL_LABELS[key]?.label || key
+      speakTTS(`${label}新热点：测试播报内容`, {
+        volume: vol,
+        rate: config.rate,
+        voice: config.voice,
+      })
+    } else {
+      if (key === "price") {
+        playCoinClink(vol)
+      } else {
+        playDing(vol)
+      }
+    }
+  }, [settings])
+
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
-
-      {/* Panel */}
       <div className="relative w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-xl border border-border bg-card shadow-2xl m-4">
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-border bg-card rounded-t-xl">
@@ -157,8 +185,8 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
         </div>
 
         {/* Channel Cards */}
-        <div className="p-4 space-y-4">
-          <h3 className="text-sm font-bold text-foreground mb-2">TTS 播报设置</h3>
+        <div className="p-4 flex flex-col gap-4">
+          <h3 className="text-sm font-bold text-foreground">分频道声音设置</h3>
 
           {Object.entries(settings.channels).map(([key, config]) => {
             const info = CHANNEL_LABELS[key]
@@ -167,14 +195,7 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     {info.icon ? (
-                      <Image
-                        src={info.icon}
-                        alt={info.label}
-                        width={20}
-                        height={20}
-                        className="rounded-sm"
-                        unoptimized
-                      />
+                      <Image src={info.icon} alt={info.label} width={20} height={20} className="rounded-sm" unoptimized />
                     ) : key === "price" ? (
                       <AlertTriangle size={18} className="text-primary" />
                     ) : (
@@ -192,35 +213,68 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
                 </div>
 
                 {config.enabled && (
-                  <div className="space-y-3 pl-1">
-                    {/* Voice Selection */}
+                  <div className="flex flex-col gap-3 pl-1">
+                    {/* Mode selector: TTS vs Tone */}
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground w-12">语音</span>
+                      <span className="text-xs text-muted-foreground w-12">模式</span>
                       <div className="flex gap-2">
                         <button
-                          onClick={() => updateChannel(key, { voice: "male" })}
+                          onClick={() => updateChannel(key, { mode: "tts" })}
                           className={cn(
-                            "px-3 py-1 rounded-md text-xs transition-colors",
-                            config.voice === "male"
+                            "flex items-center gap-1 px-3 py-1 rounded-md text-xs transition-colors",
+                            config.mode === "tts"
                               ? "bg-primary text-primary-foreground"
                               : "bg-accent text-muted-foreground hover:text-foreground"
                           )}
                         >
-                          男声
+                          <Mic size={10} />
+                          TTS语音
                         </button>
                         <button
-                          onClick={() => updateChannel(key, { voice: "female" })}
+                          onClick={() => updateChannel(key, { mode: "tone" })}
                           className={cn(
-                            "px-3 py-1 rounded-md text-xs transition-colors",
-                            config.voice === "female"
+                            "flex items-center gap-1 px-3 py-1 rounded-md text-xs transition-colors",
+                            config.mode === "tone"
                               ? "bg-primary text-primary-foreground"
                               : "bg-accent text-muted-foreground hover:text-foreground"
                           )}
                         >
-                          女声
+                          <Music size={10} />
+                          提示音
                         </button>
                       </div>
                     </div>
+
+                    {/* Voice (only for TTS mode) */}
+                    {config.mode === "tts" && (
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground w-12">语音</span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => updateChannel(key, { voice: "male" })}
+                            className={cn(
+                              "px-3 py-1 rounded-md text-xs transition-colors",
+                              config.voice === "male"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-accent text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            男声
+                          </button>
+                          <button
+                            onClick={() => updateChannel(key, { voice: "female" })}
+                            className={cn(
+                              "px-3 py-1 rounded-md text-xs transition-colors",
+                              config.voice === "female"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-accent text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            女声
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Volume */}
                     <div className="flex items-center gap-3">
@@ -249,11 +303,22 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
                       <span className="text-xs text-muted-foreground w-8 text-right">{config.rate.toFixed(1)}x</span>
                     </div>
 
-                    {/* Template hint */}
+                    {/* Test button */}
+                    <button
+                      onClick={() => testSound(key)}
+                      className="self-start flex items-center gap-1 px-3 py-1 rounded-md text-xs bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <Volume2 size={10} />
+                      测试播放
+                    </button>
+
                     <p className="text-[10px] text-muted-foreground/60 italic">
-                      {key === "price"
-                        ? '播报模板: "币价预警：BTC 在1小时内上涨5.2%"'
-                        : `播报模板: "${info.label}新热点：标题内容"`}
+                      {config.mode === "tts"
+                        ? (key === "price"
+                          ? '播报: "币价预警：BTC 在1小时内上涨5.2%"'
+                          : `播报: "检测到[${info.label}]新热点：标题内容"`)
+                        : (key === "price" ? '提示音: 金币碰撞声' : '提示音: 清脆叮声')
+                      }
                     </p>
                   </div>
                 )}
@@ -268,8 +333,7 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
             <AlertTriangle size={14} className="text-primary" />
             币价异动预警
           </h3>
-
-          <div className="p-3 rounded-lg bg-secondary/50 border border-border/30 space-y-3">
+          <div className="p-3 rounded-lg bg-secondary/50 border border-border/30 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-foreground">启用预警</span>
               <Switch
@@ -280,7 +344,6 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
 
             {settings.priceAlert.enabled && (
               <>
-                {/* Period */}
                 <div>
                   <span className="text-xs text-muted-foreground block mb-2">监控周期</span>
                   <div className="flex flex-wrap gap-1.5">
@@ -301,7 +364,6 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
                   </div>
                 </div>
 
-                {/* Threshold */}
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground w-16">波动阈值</span>
                   <Slider
@@ -317,7 +379,6 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
                   </span>
                 </div>
 
-                {/* Cooldown */}
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-muted-foreground w-16">冷却时间</span>
                   <Slider
@@ -333,20 +394,20 @@ export function SoundControl({ isOpen, onClose }: SoundControlProps) {
                   </span>
                 </div>
 
-                <div className="text-[10px] text-muted-foreground/60 space-y-1">
-                  <p>上涨/金狗提示: 金币碰撞音 (Coin Clink)</p>
-                  <p>暴跌/剧烈波动: 紧急报警音 (Alarm)</p>
-                  <p>币价报警优先级最高，会打断正在播报的语音</p>
+                <div className="text-[10px] text-muted-foreground/60 flex flex-col gap-1">
+                  <p>普通热搜: 温和提示音 (Ding)</p>
+                  <p>币价异动 (达阈值): 循环报警音，点击"已读"停止</p>
+                  <p>{"金狗 (>9.0): 金币碰撞声，最高优先级"}</p>
+                  <p>后台标签页/息屏时声音仍可触发</p>
                 </div>
               </>
             )}
           </div>
         </div>
 
-        {/* Footer hint */}
         <div className="p-4 border-t border-border/30 text-center">
           <p className="text-[11px] text-muted-foreground">
-            请点击页面任意位置以激活浏览器音频权限 (AudioContext)
+            首次访问请点击"开启声音"按钮激活浏览器音频权限
           </p>
           <p className="text-[10px] text-muted-foreground/60 mt-1">
             所有设置自动保存至本地，刷新后不丢失

@@ -220,7 +220,7 @@ export default function AdminPage() {
           >
             登录
           </button>
-          <p className="text-[10px] text-muted-foreground text-center">{"默认密码: admin2026"}</p>
+          <p className="text-[10px] text-muted-foreground text-center">{"管理员专属入口"}</p>
           <Link href="/" className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft size={12} /> 返回首页
           </Link>

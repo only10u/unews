@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { cn } from "@/lib/utils"
 import { type Platform } from "@/lib/mock-data"
 import { TopNav } from "@/components/top-nav"
 import { NewsFeed } from "@/components/news-feed"
@@ -10,6 +9,8 @@ import { TickerTape } from "@/components/ticker-tape"
 import { SoundControl } from "@/components/sound-control"
 import { AuthDialog } from "@/components/auth-dialog"
 import { PushConfig } from "@/components/push-config"
+import { AudioUnlockOverlay } from "@/components/audio-unlock-overlay"
+import { TutorialDialog } from "@/components/tutorial-dialog"
 
 function getStoredAuth(): boolean {
   if (typeof window === "undefined") return false
@@ -39,6 +40,7 @@ export default function HomePage() {
   const [soundSettingsOpen, setSoundSettingsOpen] = useState(false)
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [pushConfigOpen, setPushConfigOpen] = useState(false)
+  const [tutorialOpen, setTutorialOpen] = useState(false)
   const [isAuthed, setIsAuthed] = useState(false)
   const [aiSummaryEnabled, setAiSummaryEnabled] = useState(false)
   const [scoreThreshold, setScoreThreshold] = useState(0)
@@ -109,6 +111,7 @@ export default function HomePage() {
         onOpenSoundSettings={() => setSoundSettingsOpen(true)}
         onOpenAuthDialog={() => setAuthDialogOpen(true)}
         onOpenPushConfig={() => setPushConfigOpen(true)}
+        onOpenTutorial={() => setTutorialOpen(true)}
         aiSummaryEnabled={aiSummaryEnabled}
         onToggleAiSummary={handleToggleAiSummary}
       />
@@ -132,8 +135,11 @@ export default function HomePage() {
         </div>
 
         {/* Hot Rankings Sidebar */}
-        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} />
+        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} isAuthed={isAuthed} />
       </div>
+
+      {/* Audio unlock overlay */}
+      <AudioUnlockOverlay />
 
       {/* Bottom Ticker Tape */}
       <TickerTape />
@@ -149,6 +155,12 @@ export default function HomePage() {
         isOpen={authDialogOpen}
         onClose={() => setAuthDialogOpen(false)}
         onAuth={setIsAuthed}
+      />
+
+      {/* Tutorial Dialog */}
+      <TutorialDialog
+        isOpen={tutorialOpen}
+        onClose={() => setTutorialOpen(false)}
       />
 
       {/* Push Config Dialog */}

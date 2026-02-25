@@ -25,6 +25,7 @@ interface TopNavProps {
   onOpenSoundSettings?: () => void
   onOpenAuthDialog?: () => void
   onOpenPushConfig?: () => void
+  onOpenTutorial?: () => void
   aiSummaryEnabled?: boolean
   onToggleAiSummary?: () => void
 }
@@ -46,6 +47,7 @@ export function TopNav({
   onOpenSoundSettings,
   onOpenAuthDialog,
   onOpenPushConfig,
+  onOpenTutorial,
   aiSummaryEnabled = false,
   onToggleAiSummary,
 }: TopNavProps) {
@@ -220,13 +222,14 @@ export function TopNav({
           </a>
 
           {/* Tutorial */}
-          <a
-            href="#tutorial"
+          <button
+            onClick={onOpenTutorial}
             className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            aria-label="使用教程"
+            aria-label="使用说明"
+            title="使用说明"
           >
             <BookOpen size={15} />
-          </a>
+          </button>
         </div>
       </div>
     </header>

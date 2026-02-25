@@ -22,6 +22,7 @@ import {
   TrendingUp,
   TrendingDown,
   Flame,
+  Lock,
 } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import Image from "next/image"
@@ -31,6 +32,7 @@ interface HotSidebarProps {
   activeChannel: Platform
   onToggle?: (collapsed: boolean) => void
   onWidthChange?: (width: number) => void
+  isAuthed?: boolean
 }
 
 const DEFAULT_WIDTH = 350
@@ -161,7 +163,8 @@ function TrendingList({
   const hasMore = items.length > defaultMaxItems
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col">
+      {/* Header */}
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <Image src={icon} alt={title} width={18} height={18} className="rounded-sm object-cover" unoptimized />
@@ -169,22 +172,21 @@ function TrendingList({
           {loading && <RefreshCw size={10} className="text-muted-foreground animate-spin" />}
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="实时同步中" />
         </div>
-        <div className="flex items-center gap-2">
-          {showViewAll && viewAllUrl && (
-            <a
-              href={viewAllUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
-            >
-              查看全部
-              <ExternalLink size={10} />
-            </a>
-          )}
-        </div>
+        {showViewAll && viewAllUrl && (
+          <a
+            href={viewAllUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] text-primary hover:text-primary/80 transition-colors"
+          >
+            查看全部
+            <ExternalLink size={10} />
+          </a>
+        )}
       </div>
 
-      <div className="flex-1 overflow-hidden">
+      {/* Items */}
+      <div>
         {displayItems.map((item) => {
           const delta = item.rankDelta ?? 0
           return (
@@ -208,7 +210,6 @@ function TrendingList({
               {item.isBurst && (
                 <span className="shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] bg-orange-500/15 text-orange-400 font-bold">
                   <Flame size={9} />
-                  飙升
                 </span>
               )}
               {delta > 0 && (
@@ -226,27 +227,26 @@ function TrendingList({
               <span className="text-[10px] text-muted-foreground shrink-0">
                 {formatHotValue(item.hotValue)}
               </span>
-              <ExternalLink size={10} className="shrink-0 opacity-0 group-hover/item:opacity-100 text-muted-foreground transition-opacity" />
             </a>
           )
         })}
       </div>
 
-      {/* Expand / Collapse button */}
+      {/* Expand / Collapse button at the BOTTOM of the list */}
       {collapsible && hasMore && (
         <button
           onClick={() => setIsExpanded((p) => !p)}
-          className="flex items-center justify-center gap-1 py-2 mx-3 mb-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border border-border/30"
+          className="flex items-center justify-center gap-1 py-2 mx-3 my-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border border-border/30"
         >
           {isExpanded ? (
             <>
               <ChevronUp size={14} />
-              收起 (显示前 {defaultMaxItems} 条)
+              {"收起 (前 " + defaultMaxItems + " 条)"}
             </>
           ) : (
             <>
               <ChevronDown size={14} />
-              展开全部 ({items.length} 条)
+              {"展开全部 (" + items.length + " 条)"}
             </>
           )}
         </button>
@@ -255,7 +255,7 @@ function TrendingList({
   )
 }
 
-export function HotSidebar({ activeChannel, onToggle, onWidthChange }: HotSidebarProps) {
+export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = false }: HotSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
   const isDragging = useRef(false)
@@ -264,7 +264,6 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange }: HotSideba
 
   const isWide = sidebarWidth >= WIDE_THRESHOLD
 
-  // SWR with 1-second refresh
   const { data: weiboRaw, isValidating: weiboLoading } = useSWR("weibo", trendingFetcher, {
     refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockWeiboTrending,
   })
@@ -291,7 +290,6 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange }: HotSideba
     })
   }, [onToggle])
 
-  // Drag resize handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     isDragging.current = true
@@ -360,16 +358,30 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange }: HotSideba
         <div
           onMouseDown={handleMouseDown}
           className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-40 group flex items-center justify-center hover:bg-primary/10 transition-colors"
-          title="拖动调整宽度"
+          title="向左拖动扩展，可并排显示三个板块"
         >
           <div className="w-0.5 h-8 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
         </div>
 
         <ScrollArea className="h-full">
-          <div className="py-2 pl-2">
+          {!isAuthed && (
+            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+              <Lock size={28} className="text-primary mb-3" />
+              <h3 className="text-sm font-bold text-foreground mb-2">排行榜仅限付费用户</h3>
+              <p className="text-xs text-muted-foreground mb-1">输入密钥解锁热搜排行榜、推文推送等全部功能。</p>
+              <p className="text-[10px] text-muted-foreground/60">免费用户可使用底部币价监控功能。</p>
+            </div>
+          )}
+          {isAuthed && <div className="py-2 pl-2">
+            {/* Width indicator hint */}
+            {sidebarWidth > MIN_WIDTH && sidebarWidth < WIDE_THRESHOLD && (
+              <div className="text-center text-[10px] text-muted-foreground/50 pb-1">
+                {"继续向左拖动可并排显示 (" + Math.round((sidebarWidth / WIDE_THRESHOLD) * 100) + "%)"}
+              </div>
+            )}
+
             {activeChannel === "aggregate" ? (
               isWide ? (
-                /* Wide mode: 3-column grid */
                 <div className="grid grid-cols-3 gap-0 h-full">
                   <div className="border-r border-border/30">
                     <TrendingList
@@ -409,7 +421,6 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange }: HotSideba
                   </div>
                 </div>
               ) : (
-                /* Narrow mode: stacked with expand/collapse per section */
                 <>
                   <TrendingList
                     title="微博热搜"
@@ -447,39 +458,39 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange }: HotSideba
               )
             ) : activeChannel === "weibo" ? (
               <TrendingList
-                title="微博热搜 Top 20"
+                title="微博热搜 Top 50"
                 icon={PLATFORM_ICONS.weibo}
                 items={weibo}
                 defaultMaxItems={20}
                 showViewAll
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
                 loading={weiboLoading}
-                collapsible={false}
+                collapsible
               />
             ) : activeChannel === "douyin" ? (
               <TrendingList
-                title="抖音热搜 Top 20"
+                title="抖音热搜 Top 50"
                 icon={PLATFORM_ICONS.douyin}
                 items={douyin}
                 defaultMaxItems={20}
                 showViewAll
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
                 loading={douyinLoading}
-                collapsible={false}
+                collapsible
               />
             ) : (
               <TrendingList
-                title="公众号热文 Top 20"
+                title="公众号热文 Top 50"
                 icon={PLATFORM_ICONS.gongzhonghao}
                 items={gzh}
                 defaultMaxItems={20}
                 showViewAll
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
                 loading={gzhLoading}
-                collapsible={false}
+                collapsible
               />
             )}
-          </div>
+          </div>}
         </ScrollArea>
       </aside>
     </>

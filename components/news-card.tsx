@@ -51,6 +51,15 @@ function getPlatformLabel(platform: NewsItem["platform"]): string {
   }
 }
 
+function getPlatformSearchUrl(platform: NewsItem["platform"], title: string): string {
+  const q = encodeURIComponent(title)
+  switch (platform) {
+    case "weibo": return `https://s.weibo.com/weibo?q=${q}`
+    case "douyin": return `https://www.douyin.com/search/${q}`
+    case "gongzhonghao": return `https://weixin.sogou.com/weixin?query=${q}`
+  }
+}
+
 function getPlatformShort(platform: NewsItem["platform"]): string {
   switch (platform) {
     case "weibo": return "微博热搜"
@@ -89,7 +98,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: item.title,
-          content: item.summary + (item.scoreReason ? ` [评分依据: ${item.scoreReason}]` : ""),
+          content: (item.summary || "") + (item.scoreReason ? ` [评分依据: ${item.scoreReason}]` : ""),
           platform: item.platform,
         }),
       })
@@ -275,10 +284,10 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             </button>
           </div>
 
-          {/* Title */}
+          {/* Title - links to platform search results */}
           <h3 className="font-bold text-foreground mb-1 text-balance leading-relaxed">
             <a
-              href={item.url}
+              href={getPlatformSearchUrl(item.platform, item.title)}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:text-primary transition-colors"

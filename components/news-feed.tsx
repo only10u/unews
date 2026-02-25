@@ -444,30 +444,6 @@ export function NewsFeed({
                 {"取消置顶 (" + pinnedIds.size + ")"}
               </button>
             )}
-
-            {hasMore && (
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className={cn(
-                  "flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium transition-colors",
-                  isExpanded
-                    ? "bg-primary/10 text-primary"
-                    : "bg-secondary text-muted-foreground hover:text-foreground hover:bg-accent"
-                )}
-              >
-                {isExpanded ? (
-                  <>
-                    <ChevronUp size={12} />
-                    收起
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown size={12} />
-                    {"展开全部 (" + flatDisplayItems.length + ")"}
-                  </>
-                )}
-              </button>
-            )}
           </div>
         </div>
       </div>
