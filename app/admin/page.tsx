@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { cn } from "@/lib/utils"
 import {
   ShieldCheck,
@@ -68,9 +68,7 @@ function relativeTime(ts: number) {
   return `${Math.floor(d / 86400_000)} 天前`
 }
 
-function createFetcher(token: string) {
-  return (url: string) => fetch(url, { headers: { "x-admin-token": token } }).then((r) => { if (!r.ok) throw new Error("Unauthorized"); return r.json() })
-}
+// fetcher is created inside the component via useCallback to avoid stale closures
 
 // ---- Stat Card ----
 function StatCard({ label, value, icon: Icon, color, sub }: { label: string; value: string | number; icon: React.ComponentType<{ size?: number; className?: string }>; color: string; sub?: string }) {
@@ -119,17 +117,29 @@ export default function AdminPage() {
   const [seeding, setSeeding] = useState(false)
   const [seedResult, setSeedResult] = useState("")
 
-  const fetcher = createFetcher(adminToken)
+  // Use a ref to always hold the current token so fetcher closures never go stale
+  const tokenRef = useRef(adminToken)
+  useEffect(() => { tokenRef.current = adminToken }, [adminToken])
 
-  const { data: stats, mutate: mutateStats } = useSWR(isAuthed ? "/api/admin/stats" : null, fetcher, { refreshInterval: 5000 })
-  const { data: keys, mutate: mutateKeys } = useSWR(isAuthed ? "/api/admin/keys" : null, fetcher, { refreshInterval: 10000 })
-  const { data: onlineUsers } = useSWR(isAuthed ? "/api/admin/heartbeat" : null, fetcher, { refreshInterval: 5000 })
-  const { data: logs, mutate: mutateLogs } = useSWR(isAuthed ? "/api/admin/logs?limit=100" : null, fetcher, { refreshInterval: 5000 })
+  const fetcher = useCallback(
+    (url: string) => fetch(url, { headers: { "x-admin-token": tokenRef.current } }).then((r) => { if (!r.ok) throw new Error("Unauthorized"); return r.json() }),
+    [] // stable reference; reads tokenRef.current at call time
+  )
 
-  // Persist session
+  // SWR keys include adminToken so they re-fetch when token changes
+  const { data: stats, mutate: mutateStats } = useSWR(isAuthed && adminToken ? ["/api/admin/stats", adminToken] : null, ([url]) => fetcher(url), { refreshInterval: 5000 })
+  const { data: keys, mutate: mutateKeys } = useSWR(isAuthed && adminToken ? ["/api/admin/keys", adminToken] : null, ([url]) => fetcher(url), { refreshInterval: 10000 })
+  const { data: onlineUsers } = useSWR(isAuthed && adminToken ? ["/api/admin/heartbeat", adminToken] : null, ([url]) => fetcher(url), { refreshInterval: 5000 })
+  const { data: logs, mutate: mutateLogs } = useSWR(isAuthed && adminToken ? ["/api/admin/logs?limit=100", adminToken] : null, ([url]) => fetcher(url), { refreshInterval: 5000 })
+
+  // Persist session - restore from sessionStorage
   useEffect(() => {
     const saved = sessionStorage.getItem("admin-token")
-    if (saved) { setAdminToken(saved); setIsAuthed(true) }
+    if (saved) {
+      tokenRef.current = saved // sync immediately so fetcher has it
+      setAdminToken(saved)
+      setIsAuthed(true)
+    }
   }, [])
 
   const handleLogin = async () => {
@@ -138,6 +148,7 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })
       if (res.ok) {
         const { token } = await res.json()
+        tokenRef.current = token // sync immediately so fetcher has it
         setAdminToken(token)
         sessionStorage.setItem("admin-token", token)
         setIsAuthed(true)
@@ -161,7 +172,7 @@ export default function AdminPage() {
       }
       const res = await fetch("/api/admin/keys", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
+        headers: { "Content-Type": "application/json", "x-admin-token": tokenRef.current },
         body: JSON.stringify(payload),
       })
       if (!res.ok) {
@@ -179,7 +190,7 @@ export default function AdminPage() {
 
   const handleRevokeKey = async (key: string) => {
     try {
-      await fetch("/api/admin/keys", { method: "DELETE", headers: { "Content-Type": "application/json", "x-admin-token": adminToken }, body: JSON.stringify({ key }) })
+      await fetch("/api/admin/keys", { method: "DELETE", headers: { "Content-Type": "application/json", "x-admin-token": tokenRef.current }, body: JSON.stringify({ key }) })
       mutateKeys(); mutateLogs()
     } catch { /* */ }
   }
@@ -192,7 +203,7 @@ export default function AdminPage() {
     setPushStatus("发送中...")
     try {
       const config = type === "dingtalk" ? { webhook: dingtalkUrl } : { botToken: tgBotToken, chatId: tgChatId }
-      const res = await fetch("/api/admin/push/test", { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": adminToken }, body: JSON.stringify({ type, config }) })
+      const res = await fetch("/api/admin/push/test", { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": tokenRef.current }, body: JSON.stringify({ type, config }) })
       const data = await res.json()
       setPushStatus(data.message || data.error || "完成")
     } catch { setPushStatus("发送失败") }
@@ -206,7 +217,7 @@ export default function AdminPage() {
       for (let i = 0; i < seedCount; i++) {
         const payload: { type: string; customDays?: number } = { type: seedKeyType }
         if (seedCustomDays) payload.customDays = Number(seedCustomDays)
-        const res = await fetch("/api/admin/keys", { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": adminToken }, body: JSON.stringify(payload) })
+        const res = await fetch("/api/admin/keys", { method: "POST", headers: { "Content-Type": "application/json", "x-admin-token": tokenRef.current }, body: JSON.stringify(payload) })
         if (res.ok) { const k = await res.json(); results.push(k.key) }
       }
       setSeedResult(`成功生成 ${results.length} 个密钥`)
@@ -682,7 +693,7 @@ export default function AdminPage() {
                   <span className="text-[10px] text-muted-foreground ml-auto bg-secondary/50 px-2 py-0.5 rounded-full">{blacklistedIPs} 个</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-                  密钥验证连续失败 5 次的 IP 将被自动加入黑名单。高频异常访问也会触发速率限制。
+                  密钥验证连续失败 5 次�� IP 将被自动加入黑名单。高频异常访问也会触发速率限制。
                 </p>
                 <div className="space-y-1.5">
                   {(logs || []).filter((l: { risk: string }) => l.risk === "high").slice(0, 6).map((log: { id: string; user: string; detail: string; time: number }) => (

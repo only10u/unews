@@ -3,7 +3,14 @@ import { adminStore } from "@/lib/admin-store"
 
 async function checkAdmin(req: NextRequest): Promise<boolean> {
   const token = req.headers.get("x-admin-token") || ""
-  return adminStore.validateAdminSession(token)
+  console.log("[v0] checkAdmin called, token length:", token.length, "token present:", !!token)
+  if (!token) {
+    console.log("[v0] No admin token provided in request")
+    return false
+  }
+  const valid = await adminStore.validateAdminSession(token)
+  console.log("[v0] validateAdminSession result:", valid)
+  return valid
 }
 
 // GET: list all keys
@@ -15,7 +22,13 @@ export async function GET(req: NextRequest) {
 
 // POST: generate new key
 export async function POST(req: NextRequest) {
-  if (!(await checkAdmin(req))) return NextResponse.json({ error: "未授权" }, { status: 401 })
+  console.log("[v0] POST /api/admin/keys called")
+  const isAdmin = await checkAdmin(req)
+  if (!isAdmin) {
+    console.log("[v0] Admin check failed for POST /api/admin/keys")
+    return NextResponse.json({ error: "未授权" }, { status: 401 })
+  }
+  console.log("[v0] Admin check passed, generating key...")
   try {
     const body = await req.json()
     const { type, customDays } = body
