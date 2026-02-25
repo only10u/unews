@@ -13,7 +13,7 @@ import {
   Settings,
   Bell,
 } from "lucide-react"
-import Image from "next/image"
+
 import { useTheme } from "next-themes"
 import { useEffect, useState } from "react"
 
@@ -63,13 +63,12 @@ export function TopNav({
       <div className="flex items-center justify-between px-4 h-14">
         {/* Left: Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <Image
+          <img
             src={LOGO_URL}
             alt="热点新闻"
             width={32}
             height={32}
             className="rounded-lg object-cover"
-            unoptimized
           />
           <h1 className="text-foreground font-bold text-lg tracking-tight hidden sm:block">
             热点新闻
@@ -90,13 +89,12 @@ export function TopNav({
               )}
             >
               {ch.icon && (
-                <Image
+                <img
                   src={ch.icon}
                   alt={ch.label}
                   width={18}
                   height={18}
                   className="rounded-sm object-cover"
-                  unoptimized
                 />
               )}
               <span>{ch.label}</span>

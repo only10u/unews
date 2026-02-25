@@ -24,7 +24,7 @@ import {
   TrendingDown,
   Flame,
 } from "lucide-react"
-import Image from "next/image"
+
 
 interface NewsCardProps {
   item: NewsItem
@@ -203,13 +203,10 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         <div className="relative shrink-0">
           <div className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
             {item.authorAvatar ? (
-              <Image
+              <img
                 src={item.authorAvatar}
                 alt={item.author}
-                width={44}
-                height={44}
                 className="object-cover w-full h-full"
-                unoptimized
               />
             ) : (
               <span className="text-muted-foreground text-lg font-bold">
@@ -219,13 +216,12 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
           {/* Platform mini icon */}
           <div className="absolute -bottom-0.5 -right-0.5 w-[18px] h-[18px] rounded-full overflow-hidden border-2 border-background">
-            <Image
+            <img
               src={getPlatformIcon(item.platform)}
               alt={getPlatformLabel(item.platform)}
               width={18}
               height={18}
               className="object-cover"
-              unoptimized
             />
           </div>
         </div>
@@ -339,13 +335,10 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                   className="relative block h-[160px] bg-secondary cursor-pointer group/video"
                 >
                   {item.imageUrl ? (
-                    <Image
+                    <img
                       src={item.imageUrl}
                       alt={item.title}
-                      width={600}
-                      height={160}
                       className="w-full h-full object-cover"
-                      unoptimized
                     />
                   ) : (
                     <div className="w-full h-full bg-secondary" />
@@ -362,13 +355,10 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 </a>
               ) : item.imageUrl ? (
                 <a href={item.url} target="_blank" rel="noopener noreferrer" className="block h-[160px]">
-                  <Image
+                  <img
                     src={item.imageUrl}
                     alt={item.title}
-                    width={600}
-                    height={160}
                     className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-300"
-                    unoptimized
                   />
                 </a>
               ) : null}
@@ -384,13 +374,12 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                   <span className="text-border">|</span>
                   <div className="flex items-center gap-1">
                     {item.authorAvatar && (
-                      <Image
+                      <img
                         src={item.authorAvatar}
                         alt={item.author}
                         width={14}
                         height={14}
                         className="rounded-full"
-                        unoptimized
                       />
                     )}
                     <span>{item.author}</span>
