@@ -1,5 +1,8 @@
 // Redis-backed admin data store using Upstash
 // All data persists across Vercel serverless invocations
+//
+// IMPORTANT: @upstash/redis auto-serializes/deserializes JSON.
+// Do NOT manually JSON.stringify/JSON.parse when using hset/hget/set/get.
 
 import { Redis } from "@upstash/redis"
 import crypto from "crypto"
@@ -13,15 +16,15 @@ const redis = new Redis({
 
 // ─── Redis key constants ─────────────────────────────────────────────
 
-const KEYS_HASH = "admin:keys"              // hash: keyStr -> JSON AccessKey
-const LOGS_LIST = "admin:logs"              // list of JSON AuditLog
-const ONLINE_HASH = "admin:online"          // hash: id -> JSON OnlineUser
-const SESSIONS_SET = "admin:sessions"       // set of session tokens
-const BLACKLIST_SET = "admin:blacklist"      // set of IPs
-const PUSH_CONFIG_KEY = "admin:push_config"  // string: JSON PushConfig
-const PV_KEY = "admin:pv"                    // string: number
-const RATE_PREFIX = "admin:rate:"            // string with TTL
-const FAIL_PREFIX = "admin:fail:"            // string with TTL
+const KEYS_HASH = "admin:keys"
+const LOGS_LIST = "admin:logs"
+const ONLINE_HASH = "admin:online"
+const SESSIONS_SET = "admin:sessions"
+const BLACKLIST_SET = "admin:blacklist"
+const PUSH_CONFIG_KEY = "admin:push_config"
+const PV_KEY = "admin:pv"
+const RATE_PREFIX = "admin:rate:"
+const FAIL_PREFIX = "admin:fail:"
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -74,16 +77,6 @@ const DURATION_MAP: Record<AccessKey["type"], { ms: number; label: string }> = {
 
 export function getDurationMap() { return DURATION_MAP }
 
-// ─── Helper ──────────────────────────────────────────────────────────
-
-function parseJSON<T>(val: unknown): T | null {
-  if (val === null || val === undefined) return null
-  if (typeof val === "string") {
-    try { return JSON.parse(val) as T } catch { return null }
-  }
-  return val as T
-}
-
 // ─── Async Store ─────────────────────────────────────────────────────
 
 export const adminStore = {
@@ -105,10 +98,10 @@ export const adminStore = {
 
     const prefix = type === "trial" ? "TRIAL" : type === "weekly" ? "WEEK" : type === "monthly" ? "MONTH" : "ANNUAL"
     const suffix = crypto.randomBytes(4).toString("hex").toUpperCase()
-    const key = `DOUU-${prefix}-${suffix}`
+    const keyStr = `DOUU-${prefix}-${suffix}`
     const ak: AccessKey = {
       id: crypto.randomUUID(),
-      key,
+      key: keyStr,
       type,
       durationMs,
       durationLabel,
@@ -118,14 +111,14 @@ export const adminStore = {
       usedBy: null,
       status: "unused",
     }
-    await redis.hset(KEYS_HASH, { [key]: JSON.stringify(ak) })
-    await adminStore.addLog("密钥生成", "admin", `生成 ${type} 密钥 (${durationLabel}): ${key}`, "low")
+    // Upstash auto-serializes the object - do NOT JSON.stringify
+    await redis.hset(KEYS_HASH, { [keyStr]: ak })
+    await adminStore.addLog("密钥生成", "admin", `生成 ${type} 密钥 (${durationLabel}): ${keyStr}`, "low")
     return ak
   },
 
   async activateKey(keyStr: string, fingerprint: string): Promise<{ success: boolean; key?: AccessKey; error?: string }> {
-    const raw = await redis.hget(KEYS_HASH, keyStr.toUpperCase())
-    const ak = parseJSON<AccessKey>(raw)
+    const ak = await redis.hget<AccessKey>(KEYS_HASH, keyStr.toUpperCase())
     if (!ak) return { success: false, error: "密钥不存在" }
     if (ak.status === "revoked") return { success: false, error: "密钥已被吊销" }
     if (ak.status === "expired") return { success: false, error: "密钥已过期" }
@@ -136,7 +129,7 @@ export const adminStore = {
       }
       if (ak.expiresAt && Date.now() > ak.expiresAt) {
         ak.status = "expired"
-        await redis.hset(KEYS_HASH, { [ak.key]: JSON.stringify(ak) })
+        await redis.hset(KEYS_HASH, { [ak.key]: ak })
         return { success: false, error: "密钥已过期" }
       }
       return { success: true, key: ak }
@@ -147,44 +140,41 @@ export const adminStore = {
     ak.activatedAt = Date.now()
     ak.expiresAt = Date.now() + ak.durationMs
     ak.usedBy = fingerprint
-    await redis.hset(KEYS_HASH, { [ak.key]: JSON.stringify(ak) })
+    await redis.hset(KEYS_HASH, { [ak.key]: ak })
     await adminStore.addLog("密钥激活", fingerprint, `激活密钥 ${keyStr}`, "low")
     return { success: true, key: ak }
   },
 
   async checkKey(keyStr: string): Promise<{ valid: boolean; expiresAt?: number }> {
-    const raw = await redis.hget(KEYS_HASH, keyStr.toUpperCase())
-    const ak = parseJSON<AccessKey>(raw)
+    const ak = await redis.hget<AccessKey>(KEYS_HASH, keyStr.toUpperCase())
     if (!ak || ak.status !== "active") return { valid: false }
     if (ak.expiresAt && Date.now() > ak.expiresAt) {
       ak.status = "expired"
-      await redis.hset(KEYS_HASH, { [ak.key]: JSON.stringify(ak) })
+      await redis.hset(KEYS_HASH, { [ak.key]: ak })
       return { valid: false }
     }
     return { valid: true, expiresAt: ak.expiresAt || undefined }
   },
 
   async revokeKey(keyStr: string): Promise<boolean> {
-    const raw = await redis.hget(KEYS_HASH, keyStr.toUpperCase())
-    const ak = parseJSON<AccessKey>(raw)
+    const ak = await redis.hget<AccessKey>(KEYS_HASH, keyStr.toUpperCase())
     if (!ak) return false
     ak.status = "revoked"
-    await redis.hset(KEYS_HASH, { [ak.key]: JSON.stringify(ak) })
+    await redis.hset(KEYS_HASH, { [ak.key]: ak })
     await adminStore.addLog("密钥吊销", "admin", `吊销密钥 ${keyStr}`, "medium")
     return true
   },
 
   async getAllKeys(): Promise<AccessKey[]> {
-    const raw = await redis.hgetall(KEYS_HASH)
+    const raw = await redis.hgetall<Record<string, AccessKey>>(KEYS_HASH)
     if (!raw || Object.keys(raw).length === 0) return []
     const now = Date.now()
     const keys: AccessKey[] = []
-    for (const val of Object.values(raw)) {
-      const ak = parseJSON<AccessKey>(val)
-      if (!ak) continue
+    for (const [, ak] of Object.entries(raw)) {
+      if (!ak || !ak.key) continue
       if (ak.status === "active" && ak.expiresAt && now > ak.expiresAt) {
         ak.status = "expired"
-        await redis.hset(KEYS_HASH, { [ak.key]: JSON.stringify(ak) })
+        await redis.hset(KEYS_HASH, { [ak.key]: ak })
       }
       keys.push(ak)
     }
@@ -204,18 +194,17 @@ export const adminStore = {
       userAgent: data.userAgent,
       fingerprint: data.fingerprint,
     }
-    await redis.hset(ONLINE_HASH, { [id]: JSON.stringify(user) })
+    await redis.hset(ONLINE_HASH, { [id]: user })
     await redis.incr(PV_KEY)
   },
 
   async getOnlineUsers(): Promise<OnlineUser[]> {
-    const raw = await redis.hgetall(ONLINE_HASH)
+    const raw = await redis.hgetall<Record<string, OnlineUser>>(ONLINE_HASH)
     if (!raw || Object.keys(raw).length === 0) return []
     const cutoff = Date.now() - 5 * 60 * 1000
     const online: OnlineUser[] = []
-    for (const [id, val] of Object.entries(raw)) {
-      const u = parseJSON<OnlineUser>(val)
-      if (!u) continue
+    for (const [id, u] of Object.entries(raw)) {
+      if (!u || !u.id) continue
       if (u.lastActive < cutoff) {
         await redis.hdel(ONLINE_HASH, id)
       } else {
@@ -236,14 +225,16 @@ export const adminStore = {
       detail,
       risk,
     }
-    await redis.lpush(LOGS_LIST, JSON.stringify(log))
-    await redis.ltrim(LOGS_LIST, 0, 499)  // Keep last 500
+    // lpush with Upstash: pass the object directly, it auto-serializes
+    await redis.lpush(LOGS_LIST, log)
+    await redis.ltrim(LOGS_LIST, 0, 499)
   },
 
   async getLogs(limit = 50): Promise<AuditLog[]> {
-    const raw = await redis.lrange(LOGS_LIST, 0, limit - 1)
+    // Upstash lrange auto-deserializes each element
+    const raw = await redis.lrange<AuditLog>(LOGS_LIST, 0, limit - 1)
     if (!raw || raw.length === 0) return []
-    return raw.map(v => parseJSON<AuditLog>(v)).filter(Boolean) as AuditLog[]
+    return raw.filter((l): l is AuditLog => !!l && !!l.id)
   },
 
   // ─── Rate Limiting ───────────────────────────────────────────────
@@ -268,7 +259,7 @@ export const adminStore = {
     const fKey = `${FAIL_PREFIX}${ip}`
     const count = await redis.incr(fKey)
     if (count === 1) {
-      await redis.expire(fKey, 3600) // 1 hour window
+      await redis.expire(fKey, 3600)
     }
     if (count >= 5) {
       await redis.sadd(BLACKLIST_SET, ip)
@@ -281,31 +272,29 @@ export const adminStore = {
 
   async createAdminSession(): Promise<string> {
     const token = crypto.randomBytes(32).toString("hex")
-    await redis.sadd(SESSIONS_SET, token)
-    // Session expires in 24 hours - set individual key too for TTL
-    await redis.set(`admin:session:${token}`, "1", { ex: 86400 })
+    // Store session with a 24-hour TTL
+    await redis.set(`admin:session:${token}`, "valid", { ex: 86400 })
     return token
   },
 
   async validateAdminSession(token: string): Promise<boolean> {
     if (!token) return false
-    // Check individual session key (has TTL)
     const exists = await redis.get(`admin:session:${token}`)
-    return exists === "1"
+    // Upstash may return "valid" as a string
+    return !!exists
   },
 
   // ─── Push Config ─────────────────────────────────────────────────
 
   async getPushConfig(): Promise<PushConfig> {
-    const raw = await redis.get(PUSH_CONFIG_KEY)
-    const config = parseJSON<PushConfig>(raw)
+    const config = await redis.get<PushConfig>(PUSH_CONFIG_KEY)
     return config || { dingtalkWebhook: "", telegramBotToken: "", telegramChatId: "" }
   },
 
   async setPushConfig(config: Partial<PushConfig>) {
     const current = await adminStore.getPushConfig()
     const updated = { ...current, ...config }
-    await redis.set(PUSH_CONFIG_KEY, JSON.stringify(updated))
+    await redis.set(PUSH_CONFIG_KEY, updated)
   },
 
   // ─── IP Blacklist ────────────────────────────────────────────────
@@ -328,7 +317,7 @@ export const adminStore = {
   async getStats() {
     const allKeys = await adminStore.getAllKeys()
     const onlineUsers = await adminStore.getOnlineUsers()
-    const pv = (await redis.get(PV_KEY)) || 0
+    const pv = (await redis.get<number>(PV_KEY)) || 0
     const logs = await adminStore.getLogs(200)
     const blacklist = await adminStore.getBlacklistedIPs()
 
