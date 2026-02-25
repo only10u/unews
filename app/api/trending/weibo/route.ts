@@ -1,24 +1,105 @@
 import { NextResponse } from "next/server"
 
-// Weibo trending hot search - deep content extraction
-// 1. Fetch hot search list
-// 2. For top items, attempt to fetch the first/top post content, image, video
-
 interface WeiboHotItem {
   rank: number
   title: string
   hotValue: number
   url: string
   category?: string
-  excerpt?: string       // first post summary under this topic
-  imageUrl?: string      // first image from top post
-  videoUrl?: string      // video link if available
-  topAuthor?: string     // top post author
+  excerpt?: string
+  imageUrl?: string
+  videoUrl?: string
+  topAuthor?: string
   topAuthorAvatar?: string
 }
 
 let cache: { data: WeiboHotItem[]; timestamp: number } | null = null
-const CACHE_TTL = 30_000 // 30 seconds for fresher data
+const CACHE_TTL = 30_000
+
+// Strip HTML tags and decode entities
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim()
+}
+
+// Fetch top post details for a keyword via Weibo mobile search API
+async function fetchTopPost(keyword: string): Promise<{
+  excerpt?: string
+  imageUrl?: string
+  videoUrl?: string
+  topAuthor?: string
+  topAuthorAvatar?: string
+} | null> {
+  try {
+    const encodedQ = encodeURIComponent(keyword)
+    const res = await fetch(
+      `https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D${encodedQ}&page_type=searchall`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+          "Accept": "application/json",
+          "Referer": "https://m.weibo.cn/",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        signal: AbortSignal.timeout(5000),
+      }
+    )
+    if (!res.ok) return null
+    const json = await res.json()
+
+    // Navigate through Weibo's nested structure to find actual posts
+    const cards = json?.data?.cards || []
+    for (const card of cards) {
+      // card_type 9 = single weibo, card_type 11 = card_group
+      if (card.card_type === 9 && card.mblog) {
+        const mblog = card.mblog
+        const text = stripHtml(mblog.text || "").substring(0, 200)
+        const pics = mblog.pics || []
+        const firstPic = pics.length > 0 ? (pics[0].large?.url || pics[0].url) : undefined
+        const videoUrl = mblog.page_info?.urls?.mp4_720p_mp4 || mblog.page_info?.urls?.mp4_hd_mp4 || mblog.page_info?.media_info?.stream_url || undefined
+        const videoThumb = mblog.page_info?.page_pic?.url || undefined
+
+        return {
+          excerpt: text || undefined,
+          imageUrl: firstPic || videoThumb || undefined,
+          videoUrl: videoUrl || undefined,
+          topAuthor: mblog.user?.screen_name || undefined,
+          topAuthorAvatar: mblog.user?.profile_image_url || undefined,
+        }
+      }
+      if (card.card_type === 11 && card.card_group) {
+        for (const sub of card.card_group) {
+          if (sub.card_type === 9 && sub.mblog) {
+            const mblog = sub.mblog
+            const text = stripHtml(mblog.text || "").substring(0, 200)
+            const pics = mblog.pics || []
+            const firstPic = pics.length > 0 ? (pics[0].large?.url || pics[0].url) : undefined
+            const videoUrl = mblog.page_info?.urls?.mp4_720p_mp4 || mblog.page_info?.urls?.mp4_hd_mp4 || undefined
+            const videoThumb = mblog.page_info?.page_pic?.url || undefined
+
+            return {
+              excerpt: text || undefined,
+              imageUrl: firstPic || videoThumb || undefined,
+              videoUrl: videoUrl || undefined,
+              topAuthor: mblog.user?.screen_name || undefined,
+              topAuthorAvatar: mblog.user?.profile_image_url || undefined,
+            }
+          }
+        }
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 export async function GET() {
   const now = Date.now()
@@ -44,18 +125,9 @@ export async function GET() {
     if (!Array.isArray(realtime)) throw new Error("Invalid data format")
 
     const items: WeiboHotItem[] = realtime.slice(0, 25).map(
-      (item: {
-        note?: string; word?: string; num?: number; category?: string; label_name?: string;
-        icon_desc?: string; icon_desc_color?: string; subject_querys?: string;
-      }, index: number) => {
+      (item: { note?: string; word?: string; num?: number; category?: string; label_name?: string }, index: number) => {
         const title = item.note || item.word || ""
         const searchUrl = `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`
-
-        // Generate contextual excerpt based on the hot search title + category
-        const excerpt = generateExcerpt(title, item.category || item.label_name || "")
-
-        // For top 10 items, try to get a relevant image via unsplash (topic-based)
-        const imageUrl = index < 10 ? getTopicImage(title, index) : undefined
 
         return {
           rank: index + 1,
@@ -63,13 +135,30 @@ export async function GET() {
           hotValue: item.num || 0,
           url: searchUrl,
           category: item.category || item.label_name || undefined,
-          excerpt,
-          imageUrl,
-          topAuthor: getTopicAuthor(title),
+          excerpt: `微博热搜"${title}"正在引发广泛讨论，多位大V参与转发评论。`,
+          topAuthor: "热搜博主",
           topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
         }
       }
     )
+
+    // Enrich top 5 items with real post data (parallel fetch, with timeout)
+    const top5 = items.slice(0, 5)
+    const enrichResults = await Promise.allSettled(
+      top5.map((item) => fetchTopPost(item.title))
+    )
+
+    for (let i = 0; i < Math.min(5, enrichResults.length); i++) {
+      const result = enrichResults[i]
+      if (result.status === "fulfilled" && result.value) {
+        const data = result.value
+        if (data.excerpt) items[i].excerpt = data.excerpt
+        if (data.imageUrl) items[i].imageUrl = data.imageUrl
+        if (data.videoUrl) items[i].videoUrl = data.videoUrl
+        if (data.topAuthor) items[i].topAuthor = data.topAuthor
+        if (data.topAuthorAvatar) items[i].topAuthorAvatar = data.topAuthorAvatar
+      }
+    }
 
     cache = { data: items, timestamp: now }
     return NextResponse.json(items)
@@ -78,56 +167,6 @@ export async function GET() {
     if (cache) return NextResponse.json(cache.data)
     return NextResponse.json(generateFallbackData(), { headers: { "X-Data-Source": "fallback" } })
   }
-}
-
-function generateExcerpt(title: string, category: string): string {
-  const categoryMap: Record<string, string> = {
-    "": `微博热搜话题"${title}"引发广泛讨论，多位大V参与转发评论，话题持续发酵中。`,
-    "社会": `社会热点"${title}"引发网友热议，相关话题阅读量持续攀升，多家媒体跟进报道。`,
-    "娱乐": `娱乐圈动态"${title}"登上热搜，粉丝和路人纷纷围观讨论。`,
-    "财经": `财经热点"${title}"受到市场高度关注，分析人士认为此事件可能对相关资产价格产生影响。`,
-    "科技": `科技领域"${title}"成为焦点，行业内人士纷纷发表观点和分析。`,
-  }
-  return categoryMap[category] || categoryMap[""]
-}
-
-function getTopicImage(title: string, index: number): string {
-  // Map topics to relevant image searches
-  const cryptoKeywords = ["比特币", "以太坊", "加密", "区块链", "BTC", "ETH", "币", "链", "defi", "nft", "web3", "代币", "交易所"]
-  const isCrypto = cryptoKeywords.some(k => title.toLowerCase().includes(k.toLowerCase()))
-
-  if (isCrypto) {
-    const cryptoImages = [
-      "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&h=450&fit=crop",
-      "https://images.unsplash.com/photo-1639762681485-074b7f938ba0?w=800&h=450&fit=crop",
-      "https://images.unsplash.com/photo-1622630998477-20aa696ecb05?w=800&h=450&fit=crop",
-      "https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=800&h=450&fit=crop",
-      "https://images.unsplash.com/photo-1642790106117-e829e14a795f?w=800&h=450&fit=crop",
-    ]
-    return cryptoImages[index % cryptoImages.length]
-  }
-
-  const generalImages = [
-    "https://images.unsplash.com/photo-1504711434969-e33886168d9c?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1495020689067-958852a7765e?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1588681664899-f142ff2dc9b1?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1585829365295-ab7cd400c167?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=800&h=450&fit=crop",
-  ]
-  return generalImages[index % generalImages.length]
-}
-
-function getTopicAuthor(title: string): string {
-  const officialKeywords = ["央视", "人民日报", "新华社", "环球时报"]
-  if (officialKeywords.some(k => title.includes(k))) return title.split(/[：:]/)[0] || "官方媒体"
-  const authors = ["热搜博主", "微博大V", "财经博主", "科技达人", "社会观察者", "头条新闻", "每日热点"]
-  return authors[Math.abs(hashCode(title)) % authors.length]
-}
-
-function hashCode(s: string): number {
-  let h = 0
-  for (let i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0
-  return h
 }
 
 function generateFallbackData(): WeiboHotItem[] {
@@ -145,9 +184,8 @@ function generateFallbackData(): WeiboHotItem[] {
     title,
     hotValue: Math.floor(Math.random() * 10000000) + 500000,
     url: `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`,
-    excerpt: `微博热搜"${title}"持续发酵中，多位大V参与讨论，话题热度不断攀升。`,
-    imageUrl: i < 10 ? getTopicImage(title, i) : undefined,
-    topAuthor: getTopicAuthor(title),
+    excerpt: `微博热搜"${title}"持续发酵中，多位大V参与讨论。`,
+    topAuthor: "热搜博主",
     topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
   }))
 }

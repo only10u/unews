@@ -43,6 +43,7 @@ export default function HomePage() {
   const [aiSummaryEnabled, setAiSummaryEnabled] = useState(false)
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [keywords, setKeywords] = useState<string[]>([])
+  const [sidebarWidth, setSidebarWidth] = useState(350)
 
   // Load persisted state on mount
   useEffect(() => {
@@ -50,6 +51,35 @@ export default function HomePage() {
     const cfg = getStoredPushConfig()
     setScoreThreshold(cfg.scoreThreshold)
     setKeywords(cfg.keywords)
+  }, [])
+
+  // Heartbeat: report to admin backend every 30 seconds
+  useEffect(() => {
+    function sendHeartbeat() {
+      try {
+        const auth = localStorage.getItem("dou-u-auth")
+        const keyUsed = auth ? JSON.parse(auth).key : "free"
+        // Simple fingerprint
+        const fp = [navigator.userAgent, navigator.language, screen.width, screen.height].join("|")
+        let hash = 0
+        for (let i = 0; i < fp.length; i++) hash = ((hash << 5) - hash + fp.charCodeAt(i)) | 0
+        const fingerprint = Math.abs(hash).toString(36)
+
+        fetch("/api/admin/heartbeat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            keyUsed,
+            page: window.location.pathname,
+            fingerprint,
+          }),
+        }).catch(() => { /* silent */ })
+      } catch { /* silent */ }
+    }
+
+    sendHeartbeat()
+    const interval = setInterval(sendHeartbeat, 30_000)
+    return () => clearInterval(interval)
   }, [])
 
   const handleChannelChange = useCallback((channel: Platform) => {
@@ -87,10 +117,8 @@ export default function HomePage() {
       <div className="flex">
         {/* News Feed */}
         <div
-          className={cn(
-            "flex-1 transition-all duration-300",
-            sidebarCollapsed ? "mr-0" : "mr-[350px]"
-          )}
+          className="flex-1 transition-all duration-300"
+          style={{ marginRight: sidebarCollapsed ? 0 : `${sidebarWidth}px` }}
           id="main-feed"
         >
           <NewsFeed
@@ -104,7 +132,7 @@ export default function HomePage() {
         </div>
 
         {/* Hot Rankings Sidebar */}
-        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} />
+        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} />
       </div>
 
       {/* Bottom Ticker Tape */}

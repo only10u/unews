@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server"
 
-// Douyin trending - deep content extraction
-// Attempts to get first video/post under each trending topic
-
 interface DouyinHotItem {
   rank: number
   title: string
@@ -10,13 +7,52 @@ interface DouyinHotItem {
   url: string
   excerpt?: string
   imageUrl?: string
-  videoUrl?: string       // douyin items are predominantly video
+  videoUrl?: string
   topAuthor?: string
   topAuthorAvatar?: string
 }
 
 let cache: { data: DouyinHotItem[]; timestamp: number } | null = null
 const CACHE_TTL = 30_000
+
+// Attempt to fetch top post details for a keyword via Douyin search
+async function fetchDouyinTopPost(keyword: string): Promise<{
+  excerpt?: string
+  imageUrl?: string
+  videoUrl?: string
+  topAuthor?: string
+} | null> {
+  try {
+    // Try Douyin search suggestion API for some basic context
+    const encodedQ = encodeURIComponent(keyword)
+    const res = await fetch(
+      `https://www.douyin.com/aweme/v1/web/search/item/?keyword=${encodedQ}&count=1&offset=0`,
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Accept": "application/json",
+          "Referer": "https://www.douyin.com/",
+        },
+        signal: AbortSignal.timeout(3000),
+      }
+    )
+    if (!res.ok) return null
+    const json = await res.json()
+    const items = json?.data || json?.aweme_list || []
+    if (items.length > 0) {
+      const first = items[0]
+      return {
+        excerpt: first.desc || first.title || undefined,
+        imageUrl: first.video?.cover?.url_list?.[0] || first.video?.origin_cover?.url_list?.[0] || undefined,
+        videoUrl: first.video?.play_addr?.url_list?.[0] || undefined,
+        topAuthor: first.author?.nickname || undefined,
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
 
 export async function GET() {
   const now = Date.now()
@@ -41,21 +77,38 @@ export async function GET() {
 
     if (Array.isArray(wordList) && wordList.length > 0) {
       const items: DouyinHotItem[] = wordList.slice(0, 25).map(
-        (item: { word?: string; hot_value?: number; sentence_id?: string }, index: number) => {
+        (item: { word?: string; hot_value?: number; sentence_id?: string; event_time?: string }, index: number) => {
           const title = item.word || ""
           return {
             rank: index + 1,
             title,
             hotValue: item.hot_value || 0,
             url: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-            excerpt: `抖音热搜"${title}"相关视频正在走红，多位创作者发布了精彩内容，播放量持续攀升。`,
-            imageUrl: getDouyinImage(index),
+            excerpt: `抖音热搜"${title}"相关视频正在走红，多位创作者发布了精彩内容。`,
             videoUrl: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-            topAuthor: getDouyinAuthor(title),
+            topAuthor: "抖音达人",
             topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=000000`,
           }
         }
       )
+
+      // Attempt content enrichment for top 3 (limited due to Douyin's strict anti-scrape)
+      const top3 = items.slice(0, 3)
+      const enrichResults = await Promise.allSettled(
+        top3.map((item) => fetchDouyinTopPost(item.title))
+      )
+
+      for (let i = 0; i < Math.min(3, enrichResults.length); i++) {
+        const result = enrichResults[i]
+        if (result.status === "fulfilled" && result.value) {
+          const data = result.value
+          if (data.excerpt) items[i].excerpt = data.excerpt
+          if (data.imageUrl) items[i].imageUrl = data.imageUrl
+          if (data.videoUrl) items[i].videoUrl = data.videoUrl
+          if (data.topAuthor) items[i].topAuthor = data.topAuthor
+        }
+      }
+
       cache = { data: items, timestamp: now }
       return NextResponse.json(items)
     }
@@ -66,27 +119,6 @@ export async function GET() {
     if (cache) return NextResponse.json(cache.data)
     return NextResponse.json(generateFallbackData(), { headers: { "X-Data-Source": "fallback" } })
   }
-}
-
-function getDouyinImage(index: number): string {
-  const images = [
-    "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1596558450268-9c27524ba856?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1605810230434-7631ac76ec81?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1485846234645-a62644f84728?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1492619375914-88005aa9e8fb?w=800&h=450&fit=crop",
-    "https://images.unsplash.com/photo-1536240478700-b869070f9279?w=800&h=450&fit=crop",
-  ]
-  return images[index % images.length]
-}
-
-function getDouyinAuthor(title: string): string {
-  const authors = ["抖音达人", "热门创作者", "知名博主", "才艺达人", "科技博主", "生活记录者", "搞笑达人", "美食博主"]
-  let h = 0
-  for (let i = 0; i < title.length; i++) h = ((h << 5) - h + title.charCodeAt(i)) | 0
-  return authors[Math.abs(h) % authors.length]
 }
 
 function generateFallbackData(): DouyinHotItem[] {
@@ -105,9 +137,8 @@ function generateFallbackData(): DouyinHotItem[] {
     hotValue: Math.floor(Math.random() * 10000000) + 500000,
     url: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
     excerpt: `抖音热搜"${title}"视频正在走红，多位创作者参与互动。`,
-    imageUrl: getDouyinImage(i),
     videoUrl: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-    topAuthor: getDouyinAuthor(title),
+    topAuthor: "抖音达人",
     topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=000000`,
   }))
 }

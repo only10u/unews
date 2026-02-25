@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { cn } from "@/lib/utils"
 import {
   ShieldCheck,
-  Users,
   Key,
   BarChart3,
   Settings,
@@ -19,66 +18,13 @@ import {
   Globe,
   Clock,
   Shield,
+  Send,
+  RefreshCw,
 } from "lucide-react"
 import Link from "next/link"
+import useSWR from "swr"
 
-const ADMIN_PASSWORD = "admin2026"
-
-interface LicenseKey {
-  id: string
-  key: string
-  type: string
-  duration: string
-  createdAt: string
-  usedBy: string | null
-  expiresAt: string | null
-  status: "active" | "expired" | "revoked" | "unused"
-}
-
-interface OnlineUser {
-  id: string
-  ip: string
-  keyUsed: string
-  page: string
-  lastActive: string
-  location: string
-}
-
-interface AuditLog {
-  id: string
-  time: string
-  action: string
-  user: string
-  detail: string
-  risk: "low" | "medium" | "high"
-}
-
-const MOCK_KEYS: LicenseKey[] = [
-  { id: "1", key: "DOUU-TRIAL-2026", type: "trial", duration: "1天", createdAt: "2026-02-20", usedBy: "user@example.com", expiresAt: "2026-02-26", status: "active" },
-  { id: "2", key: "DOUU-WEEK-A1B2", type: "weekly", duration: "7天", createdAt: "2026-02-18", usedBy: null, expiresAt: null, status: "unused" },
-  { id: "3", key: "DOUU-MONTH-X9Y8", type: "monthly", duration: "30天", createdAt: "2026-02-15", usedBy: "vip@example.com", expiresAt: "2026-03-17", status: "active" },
-  { id: "4", key: "DOUU-VIP-FOREVER", type: "annual", duration: "365天", createdAt: "2026-01-01", usedBy: "whale@example.com", expiresAt: "2027-01-01", status: "active" },
-  { id: "5", key: "DOUU-TRIAL-OLD1", type: "trial", duration: "1天", createdAt: "2026-01-10", usedBy: "old@example.com", expiresAt: "2026-01-11", status: "expired" },
-  { id: "6", key: "DOUU-BAD-REVOKE", type: "weekly", duration: "7天", createdAt: "2026-02-01", usedBy: "spam@example.com", expiresAt: null, status: "revoked" },
-]
-
-const MOCK_ONLINE: OnlineUser[] = [
-  { id: "o1", ip: "203.0.113.42", keyUsed: "DOUU-TRIAL-2026", page: "/", lastActive: "刚刚", location: "北京" },
-  { id: "o2", ip: "198.51.100.88", keyUsed: "DOUU-MONTH-X9Y8", page: "/price-monitor", lastActive: "1分钟前", location: "上海" },
-  { id: "o3", ip: "192.0.2.17", keyUsed: "DOUU-VIP-FOREVER", page: "/", lastActive: "3分钟前", location: "深圳" },
-  { id: "o4", ip: "198.51.100.12", keyUsed: "免费用户", page: "/price-monitor", lastActive: "刚刚", location: "杭州" },
-  { id: "o5", ip: "203.0.113.99", keyUsed: "免费用户", page: "/price-monitor", lastActive: "2分钟前", location: "成都" },
-]
-
-const MOCK_AUDIT: AuditLog[] = [
-  { id: "a1", time: "14:32:05", action: "密钥验证", user: "203.0.113.42", detail: "使用 DOUU-TRIAL-2026 登录成功", risk: "low" },
-  { id: "a2", time: "14:28:11", action: "密钥验证", user: "192.0.2.17", detail: "使用 DOUU-VIP-FOREVER 登录成功", risk: "low" },
-  { id: "a3", time: "14:25:33", action: "密钥验证失败", user: "10.0.0.55", detail: "尝试无效密钥 FAKE-KEY-XXX (第3次)", risk: "high" },
-  { id: "a4", time: "14:20:17", action: "API调用", user: "198.51.100.88", detail: "请求 /api/ai/summary 频率异常 (120次/分钟)", risk: "medium" },
-  { id: "a5", time: "14:15:02", action: "页面访问", user: "198.51.100.12", detail: "免费用户访问 /price-monitor", risk: "low" },
-  { id: "a6", time: "14:10:45", action: "密钥验证失败", user: "10.0.0.55", detail: "尝试无效密钥 HACK-ATTEMPT (第2次)", risk: "high" },
-  { id: "a7", time: "14:05:00", action: "密钥吊销", user: "admin", detail: "管理员吊销密钥 DOUU-BAD-REVOKE", risk: "medium" },
-]
+// ─── Helpers ─────────────────────────────────────────────────────────
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -90,6 +36,16 @@ function getStatusColor(status: string) {
   }
 }
 
+function getStatusLabel(status: string) {
+  switch (status) {
+    case "active": return "使用中"
+    case "expired": return "已过期"
+    case "revoked": return "已吊销"
+    case "unused": return "未使用"
+    default: return status
+  }
+}
+
 function getRiskColor(risk: string) {
   switch (risk) {
     case "high": return "text-red-500 bg-red-500/10"
@@ -98,24 +54,120 @@ function getRiskColor(risk: string) {
   }
 }
 
+function formatTime(ts: number): string {
+  return new Date(ts).toLocaleString("zh-CN", { hour12: false })
+}
+
+function formatTimeShort(ts: number): string {
+  return new Date(ts).toLocaleTimeString("zh-CN", { hour12: false })
+}
+
+function relativeTime(ts: number): string {
+  const diff = Date.now() - ts
+  if (diff < 60_000) return "刚刚"
+  if (diff < 3600_000) return `${Math.floor(diff / 60_000)}分钟前`
+  if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}小时前`
+  return `${Math.floor(diff / 86400_000)}天前`
+}
+
+// ─── API fetchers ────────────────────────────────────────────────────
+
+function createFetcher(token: string) {
+  return (url: string) =>
+    fetch(url, { headers: { "x-admin-token": token } }).then((r) => {
+      if (!r.ok) throw new Error("Unauthorized")
+      return r.json()
+    })
+}
+
+// ─── Component ───────────────────────────────────────────────────────
+
 export default function AdminPage() {
   const [isAuthed, setIsAuthed] = useState(false)
+  const [adminToken, setAdminToken] = useState("")
   const [password, setPassword] = useState("")
+  const [loginError, setLoginError] = useState("")
   const [activeTab, setActiveTab] = useState("overview")
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [onlineCount, setOnlineCount] = useState(MOCK_ONLINE.length)
+  const [generateType, setGenerateType] = useState<string>("trial")
+  const [isGenerating, setIsGenerating] = useState(false)
 
-  // Simulate live online count
-  useEffect(() => {
-    if (!isAuthed) return
-    const interval = setInterval(() => {
-      setOnlineCount((prev) => Math.max(1, prev + (Math.random() > 0.5 ? 1 : -1)))
-    }, 8000)
-    return () => clearInterval(interval)
-  }, [isAuthed])
+  // Push config state
+  const [dingtalkUrl, setDingtalkUrl] = useState("")
+  const [tgBotToken, setTgBotToken] = useState("")
+  const [tgChatId, setTgChatId] = useState("")
+  const [pushStatus, setPushStatus] = useState("")
 
-  const handleLogin = () => {
-    if (password === ADMIN_PASSWORD) setIsAuthed(true)
+  const fetcher = createFetcher(adminToken)
+
+  // SWR hooks for real-time data
+  const { data: stats, mutate: mutateStats } = useSWR(
+    isAuthed ? "/api/admin/stats" : null,
+    fetcher,
+    { refreshInterval: 5000 }
+  )
+  const { data: keys, mutate: mutateKeys } = useSWR(
+    isAuthed ? "/api/admin/keys" : null,
+    fetcher,
+    { refreshInterval: 10000 }
+  )
+  const { data: onlineUsers } = useSWR(
+    isAuthed ? "/api/admin/heartbeat" : null,
+    fetcher,
+    { refreshInterval: 5000 }
+  )
+  const { data: logs, mutate: mutateLogs } = useSWR(
+    isAuthed ? "/api/admin/logs?limit=50" : null,
+    fetcher,
+    { refreshInterval: 5000 }
+  )
+
+  // Login handler
+  const handleLogin = async () => {
+    setLoginError("")
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      })
+      if (res.ok) {
+        const { token } = await res.json()
+        setAdminToken(token)
+        setIsAuthed(true)
+      } else {
+        setLoginError("密码错误")
+      }
+    } catch {
+      setLoginError("网络错误")
+    }
+  }
+
+  // Key operations
+  const handleGenerateKey = async () => {
+    setIsGenerating(true)
+    try {
+      await fetch("/api/admin/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
+        body: JSON.stringify({ type: generateType }),
+      })
+      mutateKeys()
+      mutateStats()
+    } catch { /* ignore */ }
+    setIsGenerating(false)
+  }
+
+  const handleRevokeKey = async (key: string) => {
+    try {
+      await fetch("/api/admin/keys", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
+        body: JSON.stringify({ key }),
+      })
+      mutateKeys()
+      mutateLogs()
+    } catch { /* ignore */ }
   }
 
   const handleCopy = (key: string, id: string) => {
@@ -124,6 +176,27 @@ export default function AdminPage() {
     setTimeout(() => setCopiedId(null), 1500)
   }
 
+  // Push test
+  const handlePushTest = async (type: "dingtalk" | "telegram") => {
+    setPushStatus("发送中...")
+    try {
+      const config = type === "dingtalk"
+        ? { webhook: dingtalkUrl }
+        : { botToken: tgBotToken, chatId: tgChatId }
+      const res = await fetch("/api/admin/push/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-token": adminToken },
+        body: JSON.stringify({ type, config }),
+      })
+      const data = await res.json()
+      setPushStatus(data.message || data.error || "完成")
+    } catch {
+      setPushStatus("发送失败")
+    }
+    setTimeout(() => setPushStatus(""), 3000)
+  }
+
+  // Login screen
   if (!isAuthed) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -140,13 +213,14 @@ export default function AdminPage() {
             placeholder="请输入管理员密码"
             className="w-full px-3 py-2 rounded-md bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           />
+          {loginError && <p className="text-xs text-destructive">{loginError}</p>}
           <button
             onClick={handleLogin}
             className="w-full py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
           >
             登录
           </button>
-          <p className="text-[10px] text-muted-foreground text-center">演示密码: admin2026</p>
+          <p className="text-[10px] text-muted-foreground text-center">{"默认密码: admin2026"}</p>
           <Link href="/" className="flex items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft size={12} /> 返回首页
           </Link>
@@ -155,13 +229,18 @@ export default function AdminPage() {
     )
   }
 
+  const onlineCount = stats?.onlineCount ?? 0
+  const activeKeys = stats?.activeKeys ?? 0
+  const todayPV = stats?.todayPV ?? 0
+  const highRiskAlerts = stats?.highRiskAlerts ?? 0
+
   const tabs = [
     { key: "overview", label: "总览", icon: Activity },
     { key: "keys", label: "密钥管理", icon: Key },
     { key: "online", label: "在线用户", icon: Globe },
     { key: "audit", label: "行为监控", icon: Eye },
     { key: "risk", label: "风控系统", icon: Shield },
-    { key: "settings", label: "系统设置", icon: Settings },
+    { key: "settings", label: "推送设置", icon: Settings },
   ]
 
   return (
@@ -180,7 +259,6 @@ export default function AdminPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Live online count */}
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -211,15 +289,15 @@ export default function AdminPage() {
       </header>
 
       <main className="max-w-7xl mx-auto p-4">
-        {/* Overview */}
+        {/* ─── Overview ─────────────────────────────────────────── */}
         {activeTab === "overview" && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { label: "实时在线", value: String(onlineCount), icon: Globe, color: "text-emerald-500" },
-                { label: "活跃密钥", value: String(MOCK_KEYS.filter((k) => k.status === "active").length), icon: Key, color: "text-primary" },
-                { label: "今日PV", value: "5,678", icon: BarChart3, color: "text-blue-400" },
-                { label: "风控警报", value: String(MOCK_AUDIT.filter((a) => a.risk === "high").length), icon: AlertTriangle, color: "text-red-500" },
+                { label: "活跃密钥", value: String(activeKeys), icon: Key, color: "text-primary" },
+                { label: "今日PV", value: String(todayPV), icon: BarChart3, color: "text-blue-400" },
+                { label: "风控警报", value: String(highRiskAlerts), icon: AlertTriangle, color: "text-red-500" },
               ].map((stat) => (
                 <div key={stat.label} className="p-4 rounded-xl border border-border bg-card">
                   <div className="flex items-center justify-between mb-2">
@@ -231,33 +309,52 @@ export default function AdminPage() {
               ))}
             </div>
 
-            {/* Recent audit */}
             <div className="rounded-xl border border-border bg-card p-4">
               <h3 className="text-sm font-bold text-foreground mb-3">最近行为日志</h3>
               <div className="space-y-2">
-                {MOCK_AUDIT.slice(0, 5).map((log) => (
+                {(logs || []).slice(0, 8).map((log: { id: string; time: number; action: string; user: string; detail: string; risk: string }) => (
                   <div key={log.id} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-secondary/30">
-                    <span className="text-[11px] text-muted-foreground font-mono w-16 shrink-0">{log.time}</span>
-                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0", getRiskColor(log.risk))}>
-                      {log.risk.toUpperCase()}
+                    <span className="text-[11px] text-muted-foreground font-mono w-20 shrink-0">{formatTimeShort(log.time)}</span>
+                    <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 uppercase", getRiskColor(log.risk))}>
+                      {log.risk}
                     </span>
-                    <span className="text-xs text-muted-foreground shrink-0">{log.action}</span>
+                    <span className="text-xs text-muted-foreground shrink-0 w-24">{log.action}</span>
                     <span className="text-xs text-foreground/80 truncate flex-1">{log.detail}</span>
                   </div>
                 ))}
+                {(!logs || logs.length === 0) && (
+                  <p className="text-xs text-muted-foreground text-center py-4">暂无日志记录</p>
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Keys */}
+        {/* ─── Keys Management ──────────────────────────────────── */}
         {activeTab === "keys" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold text-foreground">密钥管理</h2>
-              <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors">
-                <Plus size={13} /> 生成新密钥
-              </button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={generateType}
+                  onChange={(e) => setGenerateType(e.target.value)}
+                  className="px-2 py-1.5 rounded-md bg-input border border-border text-foreground text-xs"
+                >
+                  <option value="trial">试用 (1天)</option>
+                  <option value="weekly">周卡 (7天)</option>
+                  <option value="monthly">月卡 (30天)</option>
+                  <option value="annual">年卡 (365天)</option>
+                </select>
+                <button
+                  onClick={handleGenerateKey}
+                  disabled={isGenerating}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {isGenerating ? <RefreshCw size={13} className="animate-spin" /> : <Plus size={13} />}
+                  生成新密钥
+                </button>
+              </div>
             </div>
             <div className="rounded-xl border border-border bg-card overflow-hidden">
               <table className="w-full">
@@ -268,38 +365,45 @@ export default function AdminPage() {
                     <th className="px-4 py-2.5 text-left font-medium">状态</th>
                     <th className="px-4 py-2.5 text-left font-medium">有效期</th>
                     <th className="px-4 py-2.5 text-left font-medium">使用者</th>
-                    <th className="px-4 py-2.5 text-left font-medium">到期时间</th>
+                    <th className="px-4 py-2.5 text-left font-medium">过期时间</th>
                     <th className="px-4 py-2.5 text-center font-medium">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {MOCK_KEYS.map((k) => (
+                  {(keys || []).map((k: { id: string; key: string; type: string; status: string; durationLabel: string; usedBy: string | null; expiresAt: number | null }) => (
                     <tr key={k.id} className="border-b border-border/20 hover:bg-accent/20 transition-colors">
                       <td className="px-4 py-3 text-sm font-mono text-foreground">{k.key}</td>
                       <td className="px-4 py-3"><span className="px-2 py-0.5 rounded-full text-[10px] bg-primary/10 text-primary font-medium">{k.type}</span></td>
-                      <td className="px-4 py-3"><span className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium", getStatusColor(k.status))}>{k.status}</span></td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{k.duration}</td>
+                      <td className="px-4 py-3"><span className={cn("px-2 py-0.5 rounded-full text-[10px] font-medium", getStatusColor(k.status))}>{getStatusLabel(k.status)}</span></td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{k.durationLabel}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{k.usedBy || "-"}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{k.expiresAt || "-"}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground">{k.expiresAt ? formatTime(k.expiresAt) : "-"}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => handleCopy(k.key, k.id)} className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                          <button onClick={() => handleCopy(k.key, k.id)} className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="复制密钥">
                             {copiedId === k.id ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                           </button>
-                          <button className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                            <Trash2 size={12} />
-                          </button>
+                          {k.status !== "revoked" && (
+                            <button onClick={() => handleRevokeKey(k.key)} className="w-7 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors" title="吊销密钥">
+                              <Trash2 size={12} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
                   ))}
+                  {(!keys || keys.length === 0) && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">暂无密钥</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* Online Users */}
+        {/* ─── Online Users ─────────────────────────────────────── */}
         {activeTab === "online" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -309,7 +413,7 @@ export default function AdminPage() {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                 </span>
-                <span className="text-xs text-emerald-500 font-medium">实时更新</span>
+                <span className="text-xs text-emerald-500 font-medium">实时更新 (5秒刷新)</span>
               </div>
             </div>
             <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -319,38 +423,43 @@ export default function AdminPage() {
                     <th className="px-4 py-2.5 text-left font-medium">IP地址</th>
                     <th className="px-4 py-2.5 text-left font-medium">使用密钥</th>
                     <th className="px-4 py-2.5 text-left font-medium">当前页面</th>
-                    <th className="px-4 py-2.5 text-left font-medium">地区</th>
+                    <th className="px-4 py-2.5 text-left font-medium">设备指纹</th>
                     <th className="px-4 py-2.5 text-left font-medium">最后活跃</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {MOCK_ONLINE.map((u) => (
+                  {(onlineUsers || []).map((u: { id: string; ip: string; keyUsed: string; page: string; fingerprint?: string; lastActive: number }) => (
                     <tr key={u.id} className="border-b border-border/20 hover:bg-accent/20 transition-colors">
                       <td className="px-4 py-3 text-sm font-mono text-foreground">{u.ip}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{u.keyUsed}</td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{u.page}</td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{u.location}</td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground font-mono">{u.fingerprint ? u.fingerprint.substring(0, 12) + "..." : "-"}</td>
                       <td className="px-4 py-3">
                         <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Clock size={10} /> {u.lastActive}
+                          <Clock size={10} /> {relativeTime(u.lastActive)}
                         </span>
                       </td>
                     </tr>
                   ))}
+                  {(!onlineUsers || onlineUsers.length === 0) && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">暂无在线用户</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* Audit Logs */}
+        {/* ─── Audit Logs ───────────────────────────────────────── */}
         {activeTab === "audit" && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-foreground">行为监控日志</h2>
             <div className="space-y-2">
-              {MOCK_AUDIT.map((log) => (
+              {(logs || []).map((log: { id: string; time: number; action: string; user: string; detail: string; risk: string }) => (
                 <div key={log.id} className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border bg-card hover:bg-accent/20 transition-colors">
-                  <span className="text-xs text-muted-foreground font-mono w-16 shrink-0">{log.time}</span>
+                  <span className="text-xs text-muted-foreground font-mono w-20 shrink-0">{formatTimeShort(log.time)}</span>
                   <span className={cn("text-[10px] px-2 py-0.5 rounded font-bold shrink-0 uppercase", getRiskColor(log.risk))}>
                     {log.risk}
                   </span>
@@ -359,35 +468,44 @@ export default function AdminPage() {
                   <span className="text-xs text-foreground/70 truncate flex-1">{log.detail}</span>
                 </div>
               ))}
+              {(!logs || logs.length === 0) && (
+                <div className="text-center py-12 text-sm text-muted-foreground">暂无日志记录</div>
+              )}
             </div>
           </div>
         )}
 
-        {/* Risk Control */}
+        {/* ─── Risk Control ─────────────────────────────────────── */}
         {activeTab === "risk" && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-foreground">风控系统</h2>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* IP Blacklist */}
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Shield size={16} className="text-red-500" />
                   <h3 className="text-sm font-bold text-foreground">IP黑名单</h3>
+                  <span className="text-[10px] text-muted-foreground ml-auto">{stats?.blacklistedIPs || 0} 个IP</span>
                 </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  密钥验证失败5次的IP将被自动封禁。异常频率访问也会被限制。
+                </p>
                 <div className="space-y-2">
-                  {["10.0.0.55 - 多次密钥破解尝试", "172.16.0.99 - API爬取行为"].map((ip) => (
-                    <div key={ip} className="flex items-center justify-between px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/10">
-                      <span className="text-xs text-foreground/80 font-mono">{ip}</span>
-                      <button className="text-[10px] text-red-500 hover:text-red-400">解封</button>
-                    </div>
-                  ))}
+                  {(logs || [])
+                    .filter((l: { risk: string; action: string }) => l.risk === "high")
+                    .slice(0, 5)
+                    .map((log: { id: string; user: string; detail: string; time: number }) => (
+                      <div key={log.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-red-500/5 border border-red-500/10">
+                        <span className="text-xs text-foreground/80 font-mono">{log.user}</span>
+                        <span className="text-[10px] text-muted-foreground truncate ml-2 flex-1">{log.detail}</span>
+                        <span className="text-[10px] text-muted-foreground shrink-0">{relativeTime(log.time)}</span>
+                      </div>
+                    ))}
+                  {(logs || []).filter((l: { risk: string }) => l.risk === "high").length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">暂无高风险事件</p>
+                  )}
                 </div>
-                <button className="mt-3 w-full py-1.5 rounded-md bg-red-500/10 text-red-500 text-xs font-medium hover:bg-red-500/20 transition-colors">
-                  添加IP到黑名单
-                </button>
               </div>
 
-              {/* Rate Limiting */}
               <div className="rounded-xl border border-border bg-card p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <AlertTriangle size={16} className="text-amber-500" />
@@ -395,17 +513,15 @@ export default function AdminPage() {
                 </div>
                 <div className="space-y-3">
                   {[
-                    { rule: "API总调用", limit: "100次/分钟", status: "active" },
+                    { rule: "API总调用", limit: "200次/分钟", status: "active" },
                     { rule: "AI总结调用", limit: "20次/分钟", status: "active" },
-                    { rule: "密钥验证尝试", limit: "5次/10分钟", status: "active" },
-                    { rule: "热搜榜刷新", limit: "不限制", status: "inactive" },
+                    { rule: "密钥验证尝试", limit: "10次/10分钟", status: "active" },
+                    { rule: "心跳上报", limit: "200次/分钟", status: "active" },
                   ].map((r) => (
                     <div key={r.rule} className="flex items-center justify-between px-3 py-2 rounded-lg bg-secondary/30">
                       <span className="text-xs text-foreground">{r.rule}</span>
                       <span className="text-xs text-muted-foreground">{r.limit}</span>
-                      <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium",
-                        r.status === "active" ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground bg-muted"
-                      )}>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-medium text-emerald-500 bg-emerald-500/10">
                         {r.status}
                       </span>
                     </div>
@@ -416,12 +532,69 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Settings */}
+        {/* ─── Push Settings ────────────────────────────────────── */}
         {activeTab === "settings" && (
-          <div className="rounded-xl border border-border bg-card p-8 text-center">
-            <Settings size={40} className="text-muted-foreground mx-auto mb-3" />
-            <h3 className="text-foreground font-bold mb-1">系统设置</h3>
-            <p className="text-sm text-muted-foreground">配置项开发中</p>
+          <div className="space-y-6">
+            <h2 className="text-base font-bold text-foreground">推送通知设置</h2>
+
+            {/* DingTalk */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Send size={16} className="text-blue-400" />
+                <h3 className="text-sm font-bold text-foreground">钉钉 Webhook</h3>
+              </div>
+              <input
+                type="text"
+                value={dingtalkUrl}
+                onChange={(e) => setDingtalkUrl(e.target.value)}
+                placeholder="https://oapi.dingtalk.com/robot/send?access_token=..."
+                className="w-full px-3 py-2 rounded-md bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+              <button
+                onClick={() => handlePushTest("dingtalk")}
+                disabled={!dingtalkUrl}
+                className="px-4 py-1.5 rounded-md bg-blue-500/10 text-blue-400 text-xs font-medium hover:bg-blue-500/20 transition-colors disabled:opacity-40"
+              >
+                发送测试消息
+              </button>
+            </div>
+
+            {/* Telegram */}
+            <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Send size={16} className="text-sky-400" />
+                <h3 className="text-sm font-bold text-foreground">Telegram Bot</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  value={tgBotToken}
+                  onChange={(e) => setTgBotToken(e.target.value)}
+                  placeholder="Bot Token"
+                  className="px-3 py-2 rounded-md bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+                <input
+                  type="text"
+                  value={tgChatId}
+                  onChange={(e) => setTgChatId(e.target.value)}
+                  placeholder="Chat ID"
+                  className="px-3 py-2 rounded-md bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                />
+              </div>
+              <button
+                onClick={() => handlePushTest("telegram")}
+                disabled={!tgBotToken || !tgChatId}
+                className="px-4 py-1.5 rounded-md bg-sky-500/10 text-sky-400 text-xs font-medium hover:bg-sky-500/20 transition-colors disabled:opacity-40"
+              >
+                发送测试消息
+              </button>
+            </div>
+
+            {pushStatus && (
+              <div className="px-4 py-2 rounded-md bg-primary/10 text-primary text-sm font-medium">
+                {pushStatus}
+              </div>
+            )}
           </div>
         )}
       </main>

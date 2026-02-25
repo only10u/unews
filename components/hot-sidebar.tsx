@@ -30,7 +30,13 @@ import useSWR from "swr"
 interface HotSidebarProps {
   activeChannel: Platform
   onToggle?: (collapsed: boolean) => void
+  onWidthChange?: (width: number) => void
 }
+
+const DEFAULT_WIDTH = 350
+const MIN_WIDTH = 300
+const MAX_WIDTH = 1100
+const WIDE_THRESHOLD = 700
 
 function getRankColor(rank: number): string {
   if (rank === 1) return "var(--gold)"
@@ -47,7 +53,6 @@ function getRankBg(rank: number): string {
   return ""
 }
 
-/** Fetch trending from API, returns array of TrendingItem */
 async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
   try {
     const res = await fetch(`/api/trending/${platform}`)
@@ -69,34 +74,24 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
   return []
 }
 
-/**
- * Hook that tracks rank history and calculates 15-minute delta for trending items.
- * Stores snapshots every 3 minutes, compares current vs 15-min-ago snapshot.
- */
 function useRankTracking(items: TrendingItem[], platformKey: string): TrendingItem[] {
   const historyRef = useRef<{ time: number; ranks: Map<string, number> }[]>([])
 
-  // Record snapshot every 3 minutes
   useEffect(() => {
     if (items.length === 0) return
     const now = Date.now()
     const history = historyRef.current
-
-    // Only add snapshot if >3 min since last
     const last = history[history.length - 1]
     if (!last || now - last.time >= 3 * 60 * 1000) {
       const rankMap = new Map<string, number>()
       items.forEach((item) => rankMap.set(item.title, item.rank))
       history.push({ time: now, ranks: rankMap })
-      // Keep only last 10 snapshots (~30 min)
       if (history.length > 10) history.shift()
     }
   }, [items, platformKey])
 
-  // Calculate delta vs 15-min-ago snapshot
   const history = historyRef.current
   const now = Date.now()
-  // Find snapshot closest to 15 min ago
   let refSnapshot: Map<string, number> | null = null
   for (let i = history.length - 1; i >= 0; i--) {
     if (now - history[i].time >= 15 * 60 * 1000) {
@@ -104,7 +99,6 @@ function useRankTracking(items: TrendingItem[], platformKey: string): TrendingIt
       break
     }
   }
-  // If no 15-min snapshot, use the oldest available
   if (!refSnapshot && history.length > 1) {
     refSnapshot = history[0].ranks
   }
@@ -113,22 +107,11 @@ function useRankTracking(items: TrendingItem[], platformKey: string): TrendingIt
     if (!refSnapshot) return item
     const prevRank = refSnapshot.get(item.title)
     if (prevRank === undefined) {
-      // New entry - not seen 15 min ago, mark as burst if in top 10
-      return {
-        ...item,
-        prevRank: undefined,
-        rankDelta: undefined,
-        isBurst: item.rank <= 10,
-      }
+      return { ...item, prevRank: undefined, rankDelta: undefined, isBurst: item.rank <= 10 }
     }
-    const delta = prevRank - item.rank // positive = rose
-    const isBurst = delta >= 40 && item.rank <= 10 // from 50+ to top 10
-    return {
-      ...item,
-      prevRank,
-      rankDelta: delta,
-      isBurst,
-    }
+    const delta = prevRank - item.rank
+    const isBurst = delta >= 40 && item.rank <= 10
+    return { ...item, prevRank, rankDelta: delta, isBurst }
   })
 }
 
@@ -136,27 +119,26 @@ function TrendingList({
   title,
   icon,
   items,
-  maxItems,
+  defaultMaxItems = 5,
   showViewAll,
   viewAllUrl,
   loading,
-  collapsible,
+  collapsible = true,
 }: {
   title: string
   icon: string
   items: TrendingItem[]
-  maxItems?: number
+  defaultMaxItems?: number
   showViewAll?: boolean
   viewAllUrl?: string
   loading?: boolean
   collapsible?: boolean
 }) {
   const [changedIds, setChangedIds] = useState<Set<string>>(new Set())
-  const [isExpanded, setIsExpanded] = useState(true)
+  const [isExpanded, setIsExpanded] = useState(false)
   const prevItemsRef = useRef<Map<string, number>>(new Map())
-  const displayItems = maxItems ? items.slice(0, maxItems) : items
+  const displayItems = isExpanded ? items : items.slice(0, defaultMaxItems)
 
-  // Detect rank changes and trigger flash animation
   useEffect(() => {
     const prev = prevItemsRef.current
     const changed = new Set<string>()
@@ -171,14 +153,15 @@ function TrendingList({
       const timer = setTimeout(() => setChangedIds(new Set()), 800)
       return () => clearTimeout(timer)
     }
-    // Update ref
     const newMap = new Map<string, number>()
     displayItems.forEach((item) => newMap.set(item.id, item.rank))
     prevItemsRef.current = newMap
   }, [displayItems])
 
+  const hasMore = items.length > defaultMaxItems
+
   return (
-    <div className="mb-3">
+    <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2">
         <div className="flex items-center gap-2">
           <Image src={icon} alt={title} width={18} height={18} className="rounded-sm object-cover" unoptimized />
@@ -198,21 +181,10 @@ function TrendingList({
               <ExternalLink size={10} />
             </a>
           )}
-          {collapsible && (
-            <button
-              onClick={() => setIsExpanded((p) => !p)}
-              className="flex items-center justify-center w-5 h-5 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-              aria-label={isExpanded ? "收起" : "展开"}
-            >
-              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-          )}
         </div>
       </div>
-      <div className={cn(
-        "transition-all duration-200 overflow-hidden",
-        collapsible && !isExpanded ? "max-h-0 opacity-0" : "max-h-[2000px] opacity-100"
-      )}>
+
+      <div className="flex-1 overflow-hidden">
         {displayItems.map((item) => {
           const delta = item.rankDelta ?? 0
           return (
@@ -227,25 +199,18 @@ function TrendingList({
                 changedIds.has(item.id) && "animate-flash-rank"
               )}
             >
-              <span
-                className="w-5 text-center text-xs font-bold shrink-0"
-                style={{ color: getRankColor(item.rank) }}
-              >
+              <span className="w-5 text-center text-xs font-bold shrink-0" style={{ color: getRankColor(item.rank) }}>
                 {item.rank}
               </span>
               <span className="flex-1 text-sm text-foreground/90 truncate group-hover/item:text-primary transition-colors">
                 {item.title}
               </span>
-
-              {/* Burst tag */}
               {item.isBurst && (
                 <span className="shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] bg-orange-500/15 text-orange-400 font-bold">
                   <Flame size={9} />
                   飙升
                 </span>
               )}
-
-              {/* Rank delta arrows */}
               {delta > 0 && (
                 <span className="shrink-0 flex items-center gap-0.5 text-[10px] text-red-500 font-bold font-mono">
                   <TrendingUp size={10} />
@@ -258,47 +223,62 @@ function TrendingList({
                   {Math.abs(delta)}
                 </span>
               )}
-
               <span className="text-[10px] text-muted-foreground shrink-0">
                 {formatHotValue(item.hotValue)}
               </span>
-              <ExternalLink
-                size={10}
-                className="shrink-0 opacity-0 group-hover/item:opacity-100 text-muted-foreground transition-opacity"
-              />
+              <ExternalLink size={10} className="shrink-0 opacity-0 group-hover/item:opacity-100 text-muted-foreground transition-opacity" />
             </a>
           )
         })}
       </div>
+
+      {/* Expand / Collapse button */}
+      {collapsible && hasMore && (
+        <button
+          onClick={() => setIsExpanded((p) => !p)}
+          className="flex items-center justify-center gap-1 py-2 mx-3 mb-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border border-border/30"
+        >
+          {isExpanded ? (
+            <>
+              <ChevronUp size={14} />
+              收起 (显示前 {defaultMaxItems} 条)
+            </>
+          ) : (
+            <>
+              <ChevronDown size={14} />
+              展开全部 ({items.length} 条)
+            </>
+          )}
+        </button>
+      )}
     </div>
   )
 }
 
-export function HotSidebar({ activeChannel, onToggle }: HotSidebarProps) {
+export function HotSidebar({ activeChannel, onToggle, onWidthChange }: HotSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
+  const isDragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(DEFAULT_WIDTH)
 
-  // SWR with 1-second refresh for real-time hot rankings
-  const { data: weiboRaw, isValidating: weiboLoading } = useSWR(
-    "weibo",
-    trendingFetcher,
-    { refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockWeiboTrending }
-  )
-  const { data: douyinRaw, isValidating: douyinLoading } = useSWR(
-    "douyin",
-    trendingFetcher,
-    { refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockDouyinTrending }
-  )
-  const { data: gzhRaw, isValidating: gzhLoading } = useSWR(
-    "gzh",
-    trendingFetcher,
-    { refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockGzhTrending }
-  )
+  const isWide = sidebarWidth >= WIDE_THRESHOLD
+
+  // SWR with 1-second refresh
+  const { data: weiboRaw, isValidating: weiboLoading } = useSWR("weibo", trendingFetcher, {
+    refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockWeiboTrending,
+  })
+  const { data: douyinRaw, isValidating: douyinLoading } = useSWR("douyin", trendingFetcher, {
+    refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockDouyinTrending,
+  })
+  const { data: gzhRaw, isValidating: gzhLoading } = useSWR("gzh", trendingFetcher, {
+    refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockGzhTrending,
+  })
 
   const weiboBase = weiboRaw && weiboRaw.length > 0 ? weiboRaw : mockWeiboTrending
   const douyinBase = douyinRaw && douyinRaw.length > 0 ? douyinRaw : mockDouyinTrending
   const gzhBase = gzhRaw && gzhRaw.length > 0 ? gzhRaw : mockGzhTrending
 
-  // Apply rank tracking with 15-minute delta
   const weibo = useRankTracking(weiboBase, "weibo")
   const douyin = useRankTracking(douyinBase, "douyin")
   const gzh = useRankTracking(gzhBase, "gzh")
@@ -311,6 +291,39 @@ export function HotSidebar({ activeChannel, onToggle }: HotSidebarProps) {
     })
   }, [onToggle])
 
+  // Drag resize handlers
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDragging.current = true
+    startX.current = e.clientX
+    startWidth.current = sidebarWidth
+    document.body.style.cursor = "col-resize"
+    document.body.style.userSelect = "none"
+  }, [sidebarWidth])
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return
+      const delta = startX.current - e.clientX
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth.current + delta))
+      setSidebarWidth(newWidth)
+      onWidthChange?.(newWidth)
+    }
+    const handleMouseUp = () => {
+      if (isDragging.current) {
+        isDragging.current = false
+        document.body.style.cursor = ""
+        document.body.style.userSelect = ""
+      }
+    }
+    window.addEventListener("mousemove", handleMouseMove)
+    window.addEventListener("mouseup", handleMouseUp)
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("mouseup", handleMouseUp)
+    }
+  }, [onWidthChange])
+
   return (
     <>
       {/* Toggle Button */}
@@ -321,8 +334,9 @@ export function HotSidebar({ activeChannel, onToggle }: HotSidebarProps) {
           "bg-background hover:bg-accent border border-border/50 shadow-lg",
           isCollapsed
             ? "right-0 w-8 h-16 rounded-l-lg"
-            : "right-[350px] w-6 h-14 rounded-l-md"
+            : "w-6 h-14 rounded-l-md"
         )}
+        style={isCollapsed ? undefined : { right: `${sidebarWidth}px` }}
         aria-label={isCollapsed ? "展开侧边栏" : "收起侧边栏"}
       >
         {isCollapsed ? (
@@ -335,72 +349,134 @@ export function HotSidebar({ activeChannel, onToggle }: HotSidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed top-14 right-0 bottom-12 w-[350px] border-l border-border/30",
+          "fixed top-14 right-0 bottom-12 border-l border-border/30",
           "transition-transform duration-300 ease-in-out z-30",
           "bg-background",
           isCollapsed ? "translate-x-full" : "translate-x-0"
         )}
+        style={{ width: `${sidebarWidth}px` }}
       >
+        {/* Drag handle - left edge */}
+        <div
+          onMouseDown={handleMouseDown}
+          className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize z-40 group flex items-center justify-center hover:bg-primary/10 transition-colors"
+          title="拖动调整宽度"
+        >
+          <div className="w-0.5 h-8 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
+        </div>
+
         <ScrollArea className="h-full">
-          <div className="py-2">
+          <div className="py-2 pl-2">
             {activeChannel === "aggregate" ? (
-              <>
-                <TrendingList
-                  title="微博热搜"
-                  icon={PLATFORM_ICONS.weibo}
-                  items={weibo}
-                  maxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
-                  loading={weiboLoading}
-                />
-                <div className="mx-3 border-t border-border/30" />
-                <TrendingList
-                  title="抖音热搜"
-                  icon={PLATFORM_ICONS.douyin}
-                  items={douyin}
-                  maxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
-                  loading={douyinLoading}
-                />
-                <div className="mx-3 border-t border-border/30" />
-                <TrendingList
-                  title="公众号热文"
-                  icon={PLATFORM_ICONS.gongzhonghao}
-                  items={gzh}
-                  maxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
-                  loading={gzhLoading}
-                />
-              </>
+              isWide ? (
+                /* Wide mode: 3-column grid */
+                <div className="grid grid-cols-3 gap-0 h-full">
+                  <div className="border-r border-border/30">
+                    <TrendingList
+                      title="微博热搜"
+                      icon={PLATFORM_ICONS.weibo}
+                      items={weibo}
+                      defaultMaxItems={10}
+                      showViewAll
+                      viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
+                      loading={weiboLoading}
+                      collapsible
+                    />
+                  </div>
+                  <div className="border-r border-border/30">
+                    <TrendingList
+                      title="抖音热搜"
+                      icon={PLATFORM_ICONS.douyin}
+                      items={douyin}
+                      defaultMaxItems={10}
+                      showViewAll
+                      viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
+                      loading={douyinLoading}
+                      collapsible
+                    />
+                  </div>
+                  <div>
+                    <TrendingList
+                      title="公众号热文"
+                      icon={PLATFORM_ICONS.gongzhonghao}
+                      items={gzh}
+                      defaultMaxItems={10}
+                      showViewAll
+                      viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
+                      loading={gzhLoading}
+                      collapsible
+                    />
+                  </div>
+                </div>
+              ) : (
+                /* Narrow mode: stacked with expand/collapse per section */
+                <>
+                  <TrendingList
+                    title="微博热搜"
+                    icon={PLATFORM_ICONS.weibo}
+                    items={weibo}
+                    defaultMaxItems={5}
+                    showViewAll
+                    viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
+                    loading={weiboLoading}
+                    collapsible
+                  />
+                  <div className="mx-3 border-t border-border/30" />
+                  <TrendingList
+                    title="抖音热搜"
+                    icon={PLATFORM_ICONS.douyin}
+                    items={douyin}
+                    defaultMaxItems={5}
+                    showViewAll
+                    viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
+                    loading={douyinLoading}
+                    collapsible
+                  />
+                  <div className="mx-3 border-t border-border/30" />
+                  <TrendingList
+                    title="公众号热文"
+                    icon={PLATFORM_ICONS.gongzhonghao}
+                    items={gzh}
+                    defaultMaxItems={5}
+                    showViewAll
+                    viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
+                    loading={gzhLoading}
+                    collapsible
+                  />
+                </>
+              )
             ) : activeChannel === "weibo" ? (
               <TrendingList
                 title="微博热搜 Top 20"
                 icon={PLATFORM_ICONS.weibo}
                 items={weibo}
+                defaultMaxItems={20}
                 showViewAll
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
                 loading={weiboLoading}
+                collapsible={false}
               />
             ) : activeChannel === "douyin" ? (
               <TrendingList
                 title="抖音热搜 Top 20"
                 icon={PLATFORM_ICONS.douyin}
                 items={douyin}
+                defaultMaxItems={20}
                 showViewAll
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
                 loading={douyinLoading}
+                collapsible={false}
               />
             ) : (
               <TrendingList
                 title="公众号热文 Top 20"
                 icon={PLATFORM_ICONS.gongzhonghao}
                 items={gzh}
+                defaultMaxItems={20}
                 showViewAll
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
                 loading={gzhLoading}
+                collapsible={false}
               />
             )}
           </div>

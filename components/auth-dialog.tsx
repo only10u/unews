@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
-import { X, Key, Check, AlertCircle, ShieldCheck } from "lucide-react"
+import { X, Key, Check, AlertCircle, ShieldCheck, Loader2 } from "lucide-react"
 
 interface AuthDialogProps {
   isOpen: boolean
@@ -25,41 +25,101 @@ function getStoredAuth(): { key: string; expiresAt: number } | null {
   return null
 }
 
-// Demo keys - in production these would be validated server-side
-const VALID_KEYS: Record<string, number> = {
-  "DOUU-TRIAL-2026": 24 * 60 * 60 * 1000, // 1 day
-  "DOUU-WEEK-2026": 7 * 24 * 60 * 60 * 1000, // 1 week
-  "DOUU-MONTH-2026": 30 * 24 * 60 * 60 * 1000, // 1 month
-  "DOUU-VIP-FOREVER": 365 * 24 * 60 * 60 * 1000, // 1 year
+function getFingerprint(): string {
+  if (typeof window === "undefined") return "server"
+  try {
+    const nav = window.navigator
+    const screen = window.screen
+    const raw = [
+      nav.userAgent,
+      nav.language,
+      screen.width,
+      screen.height,
+      screen.colorDepth,
+      new Date().getTimezoneOffset(),
+    ].join("|")
+    // Simple hash
+    let hash = 0
+    for (let i = 0; i < raw.length; i++) {
+      hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0
+    }
+    return Math.abs(hash).toString(36)
+  } catch {
+    return "unknown"
+  }
 }
 
 export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
   const [keyInput, setKeyInput] = useState("")
-  const [status, setStatus] = useState<"idle" | "success" | "error">("idle")
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
+  const [errorMsg, setErrorMsg] = useState("")
   const [currentAuth, setCurrentAuth] = useState<{ key: string; expiresAt: number } | null>(null)
 
   useEffect(() => {
     const auth = getStoredAuth()
     setCurrentAuth(auth)
-    if (auth) onAuth(true)
+    if (auth) {
+      // Verify with server
+      fetch("/api/keys/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: auth.key }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.valid) {
+            onAuth(true)
+          } else {
+            // Key expired/invalid on server
+            localStorage.removeItem("dou-u-auth")
+            setCurrentAuth(null)
+            onAuth(false)
+          }
+        })
+        .catch(() => {
+          // Network error, trust local cache
+          onAuth(true)
+        })
+    }
   }, [onAuth])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimmed = keyInput.trim().toUpperCase()
-    const duration = VALID_KEYS[trimmed]
+    if (!trimmed) return
 
-    if (duration) {
-      const authData = { key: trimmed, expiresAt: Date.now() + duration }
-      localStorage.setItem("dou-u-auth", JSON.stringify(authData))
-      setCurrentAuth(authData)
-      setStatus("success")
-      onAuth(true)
-      setTimeout(() => {
-        setStatus("idle")
-        onClose()
-      }, 1500)
-    } else {
+    setStatus("loading")
+    setErrorMsg("")
+
+    try {
+      const res = await fetch("/api/keys/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: trimmed,
+          fingerprint: getFingerprint(),
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok && data.success) {
+        const authData = { key: data.key, expiresAt: data.expiresAt }
+        localStorage.setItem("dou-u-auth", JSON.stringify(authData))
+        setCurrentAuth(authData)
+        setStatus("success")
+        onAuth(true)
+        setTimeout(() => {
+          setStatus("idle")
+          onClose()
+        }, 1500)
+      } else {
+        setStatus("error")
+        setErrorMsg(data.error || "密钥无效")
+        setTimeout(() => setStatus("idle"), 2000)
+      }
+    } catch {
       setStatus("error")
+      setErrorMsg("网络错误，请重试")
       setTimeout(() => setStatus("idle"), 2000)
     }
   }
@@ -101,7 +161,6 @@ export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
 
         <div className="p-4 space-y-4">
           {currentAuth ? (
-            /* Already authenticated */
             <div className="text-center space-y-3">
               <div className="w-14 h-14 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto">
                 <ShieldCheck size={28} className="text-emerald-500" />
@@ -109,7 +168,10 @@ export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
               <div>
                 <p className="text-sm font-bold text-foreground">付费功能已激活</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {'剩余有效期: ' + formatExpiry(currentAuth.expiresAt)}
+                  {"剩余有效期: " + formatExpiry(currentAuth.expiresAt)}
+                </p>
+                <p className="text-[10px] text-muted-foreground/60 mt-0.5 font-mono">
+                  {currentAuth.key}
                 </p>
               </div>
               <button
@@ -120,7 +182,6 @@ export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
               </button>
             </div>
           ) : (
-            /* Login form */
             <>
               <div>
                 <p className="text-sm text-foreground mb-1">免费功能</p>
@@ -151,9 +212,13 @@ export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
                 />
               </div>
 
+              {errorMsg && status === "error" && (
+                <p className="text-xs text-destructive">{errorMsg}</p>
+              )}
+
               <button
                 onClick={handleSubmit}
-                disabled={!keyInput.trim()}
+                disabled={!keyInput.trim() || status === "loading"}
                 className={cn(
                   "w-full py-2 rounded-md text-sm font-medium transition-all",
                   status === "success"
@@ -163,7 +228,12 @@ export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
                     : "bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
                 )}
               >
-                {status === "success" ? (
+                {status === "loading" ? (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Loader2 size={14} className="animate-spin" />
+                    验证中...
+                  </span>
+                ) : status === "success" ? (
                   <span className="flex items-center justify-center gap-1.5">
                     <Check size={14} />
                     验证成功
@@ -171,7 +241,7 @@ export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
                 ) : status === "error" ? (
                   <span className="flex items-center justify-center gap-1.5">
                     <AlertCircle size={14} />
-                    密钥无效
+                    {errorMsg || "密钥无效"}
                   </span>
                 ) : (
                   "验证密钥"
@@ -179,7 +249,7 @@ export function AuthDialog({ isOpen, onClose, onAuth }: AuthDialogProps) {
               </button>
 
               <p className="text-[10px] text-muted-foreground/60 text-center">
-                演示密钥: DOUU-TRIAL-2026 (1天有效)
+                {"演示密钥: DOUU-TRIAL-2026 (1天有效)"}
               </p>
             </>
           )}
