@@ -8,30 +8,32 @@ interface DouyinHotItem {
   excerpt?: string
   imageUrl?: string
   videoUrl?: string
-  topAuthor?: string
-  topAuthorAvatar?: string
+  mediaType?: "image" | "video"
+  authorName?: string
+  authorAvatar?: string
+  detailContent?: string
 }
 
 let cache: { data: DouyinHotItem[]; timestamp: number } | null = null
 const CACHE_TTL = 30_000
 
-// Attempt to fetch top post details for a keyword via Douyin search
 async function fetchDouyinTopPost(keyword: string): Promise<{
   excerpt?: string
   imageUrl?: string
   videoUrl?: string
-  topAuthor?: string
+  mediaType?: "image" | "video"
+  authorName?: string
+  authorAvatar?: string
 } | null> {
   try {
-    // Try Douyin search suggestion API for some basic context
     const encodedQ = encodeURIComponent(keyword)
     const res = await fetch(
       `https://www.douyin.com/aweme/v1/web/search/item/?keyword=${encodedQ}&count=1&offset=0`,
       {
         headers: {
           "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-          "Accept": "application/json",
-          "Referer": "https://www.douyin.com/",
+          Accept: "application/json",
+          Referer: "https://www.douyin.com/",
         },
         signal: AbortSignal.timeout(3000),
       }
@@ -41,11 +43,15 @@ async function fetchDouyinTopPost(keyword: string): Promise<{
     const items = json?.data || json?.aweme_list || []
     if (items.length > 0) {
       const first = items[0]
+      const coverUrl = first.video?.cover?.url_list?.[0] || first.video?.origin_cover?.url_list?.[0] || undefined
+      const playUrl = first.video?.play_addr?.url_list?.[0] || undefined
       return {
-        excerpt: first.desc || first.title || undefined,
-        imageUrl: first.video?.cover?.url_list?.[0] || first.video?.origin_cover?.url_list?.[0] || undefined,
-        videoUrl: first.video?.play_addr?.url_list?.[0] || undefined,
-        topAuthor: first.author?.nickname || undefined,
+        excerpt: (first.desc || first.title || "").substring(0, 200) || undefined,
+        imageUrl: coverUrl || undefined,
+        videoUrl: playUrl || undefined,
+        mediaType: playUrl ? "video" : coverUrl ? "image" : undefined,
+        authorName: first.author?.nickname || undefined,
+        authorAvatar: first.author?.avatar_thumb?.url_list?.[0] || undefined,
       }
     }
     return null
@@ -71,42 +77,47 @@ export async function GET() {
     })
 
     if (!res.ok) throw new Error(`Douyin API: ${res.status}`)
-
     const json = await res.json()
     const wordList = json?.data?.word_list
 
     if (Array.isArray(wordList) && wordList.length > 0) {
       const items: DouyinHotItem[] = wordList.slice(0, 25).map(
-        (item: { word?: string; hot_value?: number; sentence_id?: string; event_time?: string }, index: number) => {
+        (item: { word?: string; hot_value?: number }, index: number) => {
           const title = item.word || ""
           return {
             rank: index + 1,
             title,
             hotValue: item.hot_value || 0,
             url: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-            excerpt: `抖音热搜"${title}"相关视频正在走红，多位创作者发布了精彩内容。`,
+            excerpt: `抖音热搜"${title}"相关视频正在走红`,
             imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
             videoUrl: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-            topAuthor: "抖音达人",
-            topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=000000`,
+            mediaType: "video" as const,
+            authorName: "抖音热榜",
+            authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=000000`,
           }
         }
       )
 
-      // Attempt content enrichment for top 3 (limited due to Douyin's strict anti-scrape)
-      const top3 = items.slice(0, 3)
-      const enrichResults = await Promise.allSettled(
-        top3.map((item) => fetchDouyinTopPost(item.title))
-      )
-
-      for (let i = 0; i < Math.min(3, enrichResults.length); i++) {
-        const result = enrichResults[i]
-        if (result.status === "fulfilled" && result.value) {
-          const data = result.value
-          if (data.excerpt) items[i].excerpt = data.excerpt
-          if (data.imageUrl) items[i].imageUrl = data.imageUrl
-          if (data.videoUrl) items[i].videoUrl = data.videoUrl
-          if (data.topAuthor) items[i].topAuthor = data.topAuthor
+      // Enrich in batches of 5
+      const BATCH_SIZE = 5
+      for (let start = 0; start < items.length; start += BATCH_SIZE) {
+        const batch = items.slice(start, start + BATCH_SIZE)
+        const results = await Promise.allSettled(
+          batch.map((item) => fetchDouyinTopPost(item.title))
+        )
+        for (let j = 0; j < results.length; j++) {
+          const idx = start + j
+          const result = results[j]
+          if (result.status === "fulfilled" && result.value) {
+            const data = result.value
+            if (data.excerpt) items[idx].excerpt = data.excerpt
+            if (data.imageUrl) items[idx].imageUrl = data.imageUrl
+            if (data.videoUrl) items[idx].videoUrl = data.videoUrl
+            if (data.mediaType) items[idx].mediaType = data.mediaType
+            if (data.authorName) items[idx].authorName = data.authorName
+            if (data.authorAvatar) items[idx].authorAvatar = data.authorAvatar
+          }
         }
       }
 
@@ -140,7 +151,8 @@ function generateFallbackData(): DouyinHotItem[] {
     excerpt: `抖音热搜"${title}"视频正在走红，多位创作者参与互动。`,
     imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
     videoUrl: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-    topAuthor: "抖音达人",
-    topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=000000`,
+    mediaType: "video" as const,
+    authorName: "抖音热榜",
+    authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=000000`,
   }))
 }

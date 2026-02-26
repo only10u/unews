@@ -10,33 +10,35 @@ interface WeiboHotItem {
   imageUrl?: string
   videoUrl?: string
   mediaType?: "image" | "video"
-  topAuthor?: string
-  topAuthorAvatar?: string
+  authorName?: string
+  authorAvatar?: string
+  detailContent?: string
 }
 
 let cache: { data: WeiboHotItem[]; timestamp: number } | null = null
 const CACHE_TTL = 30_000
 
-// Strip HTML tags and decode entities
 function stripHtml(html: string): string {
   return html
     .replace(/<[^>]*>/g, "")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, " ")
     .trim()
 }
 
-// Fetch top post details for a keyword via Weibo mobile search API
+function stripWeiboTags(text: string): string {
+  return text.replace(/#([^#]+)#/g, "$1").trim()
+}
+
+/** Fetch top post for a keyword via Weibo mobile search API */
 async function fetchTopPost(keyword: string): Promise<{
   excerpt?: string
+  detailContent?: string
   imageUrl?: string
   videoUrl?: string
-  topAuthor?: string
-  topAuthorAvatar?: string
+  mediaType?: "image" | "video"
+  authorName?: string
+  authorAvatar?: string
 } | null> {
   try {
     const encodedQ = encodeURIComponent(keyword)
@@ -45,8 +47,8 @@ async function fetchTopPost(keyword: string): Promise<{
       {
         headers: {
           "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-          "Accept": "application/json",
-          "Referer": "https://m.weibo.cn/",
+          Accept: "application/json",
+          Referer: "https://m.weibo.cn/",
           "X-Requested-With": "XMLHttpRequest",
         },
         signal: AbortSignal.timeout(5000),
@@ -55,45 +57,31 @@ async function fetchTopPost(keyword: string): Promise<{
     if (!res.ok) return null
     const json = await res.json()
 
-    // Navigate through Weibo's nested structure to find actual posts
     const cards = json?.data?.cards || []
     for (const card of cards) {
-      // card_type 9 = single weibo, card_type 11 = card_group
-      if (card.card_type === 9 && card.mblog) {
-        const mblog = card.mblog
-        const text = stripHtml(mblog.text || "").substring(0, 200)
-        const pics = mblog.pics || []
-        const firstPic = pics.length > 0 ? (pics[0].large?.url || pics[0].url) : undefined
-        const videoUrl = mblog.page_info?.urls?.mp4_720p_mp4 || mblog.page_info?.urls?.mp4_hd_mp4 || mblog.page_info?.media_info?.stream_url || undefined
-        const videoThumb = mblog.page_info?.page_pic?.url || undefined
+      const mblog = card.card_type === 9 ? card.mblog
+        : card.card_type === 11 ? card.card_group?.find((s: { card_type: number; mblog?: unknown }) => s.card_type === 9)?.mblog
+        : null
+      if (!mblog) continue
 
-        return {
-          excerpt: text || undefined,
-          imageUrl: firstPic || videoThumb || undefined,
-          videoUrl: videoUrl || undefined,
-          topAuthor: mblog.user?.screen_name || undefined,
-          topAuthorAvatar: mblog.user?.profile_image_url || undefined,
-        }
-      }
-      if (card.card_type === 11 && card.card_group) {
-        for (const sub of card.card_group) {
-          if (sub.card_type === 9 && sub.mblog) {
-            const mblog = sub.mblog
-            const text = stripHtml(mblog.text || "").substring(0, 200)
-            const pics = mblog.pics || []
-            const firstPic = pics.length > 0 ? (pics[0].large?.url || pics[0].url) : undefined
-            const videoUrl = mblog.page_info?.urls?.mp4_720p_mp4 || mblog.page_info?.urls?.mp4_hd_mp4 || undefined
-            const videoThumb = mblog.page_info?.page_pic?.url || undefined
+      const rawText = stripHtml(mblog.text || "")
+      const cleanText = stripWeiboTags(rawText).substring(0, 300)
+      const pics = mblog.pics || []
+      const firstPic = pics.length > 0 ? (pics[0].large?.url || pics[0].url) : undefined
+      const videoUrl = mblog.page_info?.urls?.mp4_720p_mp4
+        || mblog.page_info?.urls?.mp4_hd_mp4
+        || mblog.page_info?.media_info?.stream_url
+        || undefined
+      const videoThumb = mblog.page_info?.page_pic?.url || undefined
 
-            return {
-              excerpt: text || undefined,
-              imageUrl: firstPic || videoThumb || undefined,
-              videoUrl: videoUrl || undefined,
-              topAuthor: mblog.user?.screen_name || undefined,
-              topAuthorAvatar: mblog.user?.profile_image_url || undefined,
-            }
-          }
-        }
+      return {
+        excerpt: cleanText?.substring(0, 120) || undefined,
+        detailContent: cleanText || undefined,
+        imageUrl: firstPic || videoThumb || undefined,
+        videoUrl: videoUrl || undefined,
+        mediaType: videoUrl ? "video" : firstPic ? "image" : undefined,
+        authorName: mblog.user?.screen_name || undefined,
+        authorAvatar: mblog.user?.profile_image_url || undefined,
       }
     }
     return null
@@ -119,51 +107,47 @@ export async function GET() {
     })
 
     if (!res.ok) throw new Error(`Weibo API: ${res.status}`)
-
     const json = await res.json()
     const realtime = json?.data?.realtime
-
     if (!Array.isArray(realtime)) throw new Error("Invalid data format")
 
     const items: WeiboHotItem[] = realtime.slice(0, 25).map(
       (item: { note?: string; word?: string; num?: number; category?: string; label_name?: string }, index: number) => {
         const title = item.note || item.word || ""
-        const searchUrl = `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`
-
         return {
           rank: index + 1,
           title,
           hotValue: item.num || 0,
-          url: searchUrl,
+          url: `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`,
           category: item.category || item.label_name || undefined,
-          excerpt: `微博热搜"${title}"正在引发广泛讨论，多位大V参与转发评论。`,
+          excerpt: `微博热搜"${title}"正在引发广泛讨论`,
           imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
-          topAuthor: "热搜博主",
-          topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
+          authorName: "微博热搜",
+          authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
         }
       }
     )
 
-    // Enrich top 5 items with real post data (parallel fetch, with timeout)
-    const top5 = items.slice(0, 5)
-    const enrichResults = await Promise.allSettled(
-      top5.map((item) => fetchTopPost(item.title))
-    )
-
-    for (let i = 0; i < Math.min(5, enrichResults.length); i++) {
-      const result = enrichResults[i]
-      if (result.status === "fulfilled" && result.value) {
-        const data = result.value
-        if (data.excerpt) items[i].excerpt = data.excerpt
-        if (data.imageUrl) items[i].imageUrl = data.imageUrl
-        if (data.videoUrl) {
-          items[i].videoUrl = data.videoUrl
-          items[i].mediaType = "video"
-        } else if (data.imageUrl) {
-          items[i].mediaType = "image"
+    // Enrich ALL items in batches of 5 with real author/content data
+    const BATCH_SIZE = 5
+    for (let start = 0; start < items.length; start += BATCH_SIZE) {
+      const batch = items.slice(start, start + BATCH_SIZE)
+      const results = await Promise.allSettled(
+        batch.map((item) => fetchTopPost(item.title))
+      )
+      for (let j = 0; j < results.length; j++) {
+        const idx = start + j
+        const result = results[j]
+        if (result.status === "fulfilled" && result.value) {
+          const data = result.value
+          if (data.excerpt) items[idx].excerpt = data.excerpt
+          if (data.detailContent) items[idx].detailContent = data.detailContent
+          if (data.imageUrl) items[idx].imageUrl = data.imageUrl
+          if (data.videoUrl) items[idx].videoUrl = data.videoUrl
+          if (data.mediaType) items[idx].mediaType = data.mediaType
+          if (data.authorName) items[idx].authorName = data.authorName
+          if (data.authorAvatar) items[idx].authorAvatar = data.authorAvatar
         }
-        if (data.topAuthor) items[i].topAuthor = data.topAuthor
-        if (data.topAuthorAvatar) items[i].topAuthorAvatar = data.topAuthorAvatar
       }
     }
 
@@ -193,7 +177,7 @@ function generateFallbackData(): WeiboHotItem[] {
     url: `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`,
     excerpt: `微博热搜"${title}"持续发酵中，多位大V参与讨论。`,
     imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
-    topAuthor: "热搜博主",
-    topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
+    authorName: "微博热搜",
+    authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
   }))
 }

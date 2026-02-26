@@ -155,8 +155,8 @@ function trendingToNewsItems(
     const minutesAgo = Math.max(1, index * 2 + Math.floor(Math.random() * 3))
     const timestamp = minutesAgo <= 60 ? `${minutesAgo}分钟前` : `${Math.floor(minutesAgo / 60)}小时前`
 
-    // Use deep content fields from API if available
-    const authorName = item.topAuthor || auth.name
+    // Use real enriched author data from API
+    const authorName = item.topAuthor || item.topAuthorAvatar ? (item.topAuthor || auth.name) : auth.name
     const authorAvatar = item.topAuthorAvatar || auth.avatar
     const summary = item.excerpt
       || `${getPlatformLabel(platform === "gongzhonghao" ? "gongzhonghao" : platform)}热搜第${item.rank}名，热度值 ${formatHotValue(item.hotValue)}。${delta > 0 ? `15分钟内上升${delta}位。` : ""}`
@@ -211,6 +211,7 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             excerpt?: string; imageUrl?: string; videoUrl?: string;
             mediaType?: "image" | "video";
             topAuthor?: string; topAuthorAvatar?: string;
+            authorName?: string; authorAvatar?: string;
             detailContent?: string;
           }, i: number) => ({
             id: `${platform[0]}${i + 1}`,
@@ -222,8 +223,8 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             imageUrl: item.imageUrl,
             videoUrl: item.videoUrl,
             mediaType: item.mediaType,
-            topAuthor: item.topAuthor,
-            topAuthorAvatar: item.topAuthorAvatar,
+            topAuthor: item.topAuthor || item.authorName,
+            topAuthorAvatar: item.topAuthorAvatar || item.authorAvatar,
             detailContent: item.detailContent,
           })
         )
