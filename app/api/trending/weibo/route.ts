@@ -41,27 +41,39 @@ async function fetchTopPost(keyword: string): Promise<{
   authorName?: string
   authorAvatar?: string
 } | null> {
+  console.log('[ENRICH] fetching keyword:', keyword)
   try {
     const encodedQ = encodeURIComponent(keyword)
-    const res = await fetch(
-      `https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D${encodedQ}&page_type=searchall`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-          Accept: "application/json",
-          Referer: "https://m.weibo.cn/",
-        },
-        signal: AbortSignal.timeout(5000),
-      }
-    )
-    if (!res.ok) return null
+    const url = `https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D${encodedQ}&page_type=searchall`
+    console.log('[ENRICH] request URL:', url.substring(0, 100))
+    
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+        Accept: "application/json",
+        Referer: "https://m.weibo.cn/",
+      },
+      signal: AbortSignal.timeout(5000),
+    })
+    
+    console.log('[ENRICH] response status:', res.status, res.statusText)
+    
+    if (!res.ok) {
+      console.log('[ENRICH] failed with status:', res.status)
+      return null
+    }
+    
     const json = await res.json()
-
     const cards = json?.data?.cards || []
+    console.log('[ENRICH] cards count:', cards.length, 'ok:', json?.ok)
+
     for (const card of cards) {
+      console.log('[ENRICH] card_type:', card.card_type)
       const mblog = card.card_type === 9 ? card.mblog
         : card.card_type === 11 ? card.card_group?.find((s: { card_type: number }) => s.card_type === 9)?.mblog
         : null
+      
+      console.log('[ENRICH] mblog found:', !!mblog, 'user:', mblog?.user?.screen_name)
       if (!mblog) continue
 
       const rawText = stripHtml(mblog.text || "")
@@ -83,13 +95,20 @@ async function fetchTopPost(keyword: string): Promise<{
         authorName: mblog.user?.screen_name || undefined,
         authorAvatar: mblog.user?.profile_image_url || undefined,
       }
-      // TEST LOG - 获取真实 sinaimg URL
-      console.log('[TEST] authorAvatar:', result.authorAvatar)
-      console.log('[TEST] imageUrl:', result.imageUrl)
+      
+      console.log('[ENRICH] SUCCESS result:', JSON.stringify({
+        authorName: result.authorName,
+        authorAvatar: result.authorAvatar?.substring(0, 50),
+        imageUrl: result.imageUrl?.substring(0, 50),
+        mediaType: result.mediaType,
+      }))
       return result
     }
+    
+    console.log('[ENRICH] no valid mblog found in cards')
     return null
-  } catch {
+  } catch (e) {
+    console.log('[ENRICH] exception:', e instanceof Error ? e.message : String(e))
     return null
   }
 }
