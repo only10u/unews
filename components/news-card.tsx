@@ -23,7 +23,9 @@ import {
   TrendingUp,
   TrendingDown,
   Flame,
+  ImageOff,
 } from "lucide-react"
+import { AspectRatio } from "@/components/ui/aspect-ratio"
 
 
 interface NewsCardProps {
@@ -68,13 +70,32 @@ function getPlatformShort(platform: NewsItem["platform"]): string {
   }
 }
 
+/**
+ * Proxy image URL to bypass anti-hotlink protections.
+ * Uses images.weserv.nl public proxy for Weibo/Sinaimg domains.
+ */
+function proxyImageUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  // Weibo / Sinaimg anti-hotlink domains
+  const needsProxy = /sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com/i.test(url)
+  if (needsProxy) {
+    // weserv.nl strips referer and caches the image
+    return `https://images.weserv.nl/?url=${encodeURIComponent(url)}&w=800&q=80`
+  }
+  return url
+}
+
 export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin, onHide }: NewsCardProps) {
   const [showAiSummary, setShowAiSummary] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
+  const [imgError, setImgError] = useState(false)
   const prevEnabledRef = useRef(aiSummaryEnabled)
   const scoreLevel = getScoreLevel(item.score)
   const scoreColor = getScoreColor(item.score)
+
+  const proxiedImage = proxyImageUrl(item.imageUrl)
+  const proxiedAvatar = proxyImageUrl(item.authorAvatar)
 
   // React to global aiSummaryEnabled toggle
   useEffect(() => {
@@ -151,6 +172,8 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
     )
   })()
 
+  const hasMedia = !!(proxiedImage || item.videoUrl) && !imgError
+
   return (
     <article
       className={cn(
@@ -202,11 +225,12 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         {/* Author Avatar */}
         <div className="relative shrink-0">
           <div className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
-            {item.authorAvatar ? (
+            {proxiedAvatar ? (
               <img
-                src={item.authorAvatar}
+                src={proxiedAvatar}
                 alt={item.author}
                 className="object-cover w-full h-full"
+                loading="lazy"
               />
             ) : (
               <span className="text-muted-foreground text-lg font-bold">
@@ -222,6 +246,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
               width={18}
               height={18}
               className="object-cover"
+              loading="lazy"
             />
           </div>
         </div>
@@ -324,62 +349,54 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             {item.summary}
           </p>
 
-          {/* Media - compact image container with rounded corners and shadow */}
-          {(item.imageUrl || item.videoUrl) && (
-            <div className="mb-3 rounded-lg overflow-hidden border border-border/20 shadow-sm shadow-black/20 max-h-[160px]">
+          {/* ===== Media Container (16:9 AspectRatio) ===== */}
+          {hasMedia && (
+            <div className="mb-3 rounded-lg overflow-hidden border border-border/20 shadow-sm shadow-black/20">
               {item.videoUrl ? (
+                /* --- Video: inline HTML5 player or clickable cover --- */
+                <VideoPlayer
+                  videoUrl={item.videoUrl}
+                  coverUrl={proxiedImage}
+                  title={item.title}
+                />
+              ) : proxiedImage ? (
+                /* --- Static image in 16:9 AspectRatio --- */
                 <a
-                  href={item.videoUrl}
+                  href={getPlatformSearchUrl(item.platform, item.title)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="relative block h-[160px] bg-secondary cursor-pointer group/video"
+                  className="block"
                 >
-                  {item.imageUrl ? (
+                  <AspectRatio ratio={16 / 9}>
                     <img
-                      src={item.imageUrl}
+                      src={proxiedImage}
                       alt={item.title}
-                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={() => setImgError(true)}
+                      className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-300"
                     />
-                  ) : (
-                    <div className="w-full h-full bg-secondary" />
-                  )}
-                  {/* Semi-transparent Play icon overlay */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/video:bg-black/30 transition-colors">
-                    <div className="w-10 h-10 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center group-hover/video:bg-white/35 group-hover/video:scale-110 transition-all shadow-lg">
-                      <Play size={18} className="text-white ml-0.5 drop-shadow-md" fill="white" fillOpacity={0.9} />
-                    </div>
-                  </div>
-                  <span className="absolute top-1.5 right-1.5 text-[9px] bg-red-500/90 text-white px-1.5 py-0.5 rounded-full font-medium backdrop-blur-sm">
-                    视频
-                  </span>
-                </a>
-              ) : item.imageUrl ? (
-                <a href={item.url} target="_blank" rel="noopener noreferrer" className="block h-[160px]">
-                  <img
-                    src={item.imageUrl}
-                    alt={item.title}
-                    className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-300"
-                  />
+                  </AspectRatio>
                 </a>
               ) : null}
             </div>
           )}
 
           {/* Source Attribution */}
-          {(item.imageUrl || item.videoUrl) && (
+          {hasMedia && (
             <div className="flex items-center gap-2 mb-3 text-[10px] text-muted-foreground/60">
               <span>{"内容来源于该热搜下热度最高的" + (item.videoUrl ? "视频" : "贴文")}</span>
               {item.author && (
                 <>
                   <span className="text-border">|</span>
                   <div className="flex items-center gap-1">
-                    {item.authorAvatar && (
+                    {proxiedAvatar && (
                       <img
-                        src={item.authorAvatar}
+                        src={proxiedAvatar}
                         alt={item.author}
                         width={14}
                         height={14}
                         className="rounded-full"
+                        loading="lazy"
                       />
                     )}
                     <span>{item.author}</span>
@@ -471,5 +488,76 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         </div>
       </div>
     </article>
+  )
+}
+
+/* ============================
+   VideoPlayer sub-component
+   ============================ */
+function VideoPlayer({ videoUrl, coverUrl, title }: { videoUrl: string; coverUrl?: string; title: string }) {
+  const [playing, setPlaying] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  // Check if the video URL is a playable direct link (mp4/webm/m3u8)
+  const isDirectVideo = /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(videoUrl)
+
+  const handlePlay = () => {
+    if (isDirectVideo) {
+      setPlaying(true)
+      setTimeout(() => videoRef.current?.play(), 100)
+    } else {
+      // Open external video in new tab
+      window.open(videoUrl, "_blank", "noopener,noreferrer")
+    }
+  }
+
+  if (playing && isDirectVideo) {
+    return (
+      <AspectRatio ratio={16 / 9}>
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          controls
+          autoPlay
+          playsInline
+          className="w-full h-full object-contain bg-black rounded-lg"
+          crossOrigin="anonymous"
+        >
+          <track kind="captions" />
+        </video>
+      </AspectRatio>
+    )
+  }
+
+  return (
+    <button
+      onClick={handlePlay}
+      className="relative block w-full cursor-pointer group/video"
+      aria-label={"播放视频: " + title}
+    >
+      <AspectRatio ratio={16 / 9}>
+        {coverUrl ? (
+          <img
+            src={coverUrl}
+            alt={title}
+            loading="lazy"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-secondary to-secondary/60 flex items-center justify-center">
+            <ImageOff size={28} className="text-muted-foreground/30" />
+          </div>
+        )}
+        {/* Semi-transparent Play icon overlay */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/video:bg-black/30 transition-colors">
+          <div className="w-12 h-12 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center group-hover/video:bg-white/40 group-hover/video:scale-110 transition-all shadow-lg">
+            <Play size={22} className="text-white ml-0.5 drop-shadow-md" fill="white" fillOpacity={0.9} />
+          </div>
+        </div>
+        <span className="absolute top-2 right-2 text-[10px] bg-red-500/90 text-white px-2 py-0.5 rounded-full font-medium backdrop-blur-sm">
+          视频
+        </span>
+      </AspectRatio>
+    </button>
   )
 }
