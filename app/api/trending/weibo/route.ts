@@ -41,28 +41,48 @@ async function fetchTopPost(keyword: string): Promise<{
   authorName?: string
   authorAvatar?: string
 } | null> {
+  console.log('[ENRICH-DETAIL] START keyword:', keyword.substring(0, 15))
   try {
     const encodedQ = encodeURIComponent(keyword)
-    const res = await fetch(
-      `https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D${encodedQ}&page_type=searchall`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-          Accept: "application/json",
-          Referer: "https://m.weibo.cn/",
-        },
-        signal: AbortSignal.timeout(5000),
-      }
-    )
-    if (!res.ok) return null
+    const url = `https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D${encodedQ}&page_type=searchall`
+    
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
+        Accept: "application/json",
+        Referer: "https://m.weibo.cn/",
+      },
+      signal: AbortSignal.timeout(5000),
+    })
+    
+    console.log('[ENRICH-DETAIL] status:', res.status, res.statusText, 'keyword:', keyword.substring(0, 10))
+    
+    if (!res.ok) {
+      console.log('[ENRICH-DETAIL] HTTP failed:', res.status, res.statusText)
+      return null
+    }
+    
     const json = await res.json()
-
     const cards = json?.data?.cards || []
+    console.log('[ENRICH-DETAIL] cards length:', cards.length, 'ok:', json?.ok, 'msg:', json?.msg)
+    
+    if (cards.length === 0) {
+      console.log('[ENRICH-DETAIL] empty cards, response keys:', Object.keys(json || {}), 'data keys:', Object.keys(json?.data || {}))
+      return null
+    }
+
     for (const card of cards) {
+      console.log('[ENRICH-DETAIL] card_type:', card.card_type, 'has mblog:', !!card.mblog, 'has card_group:', !!card.card_group)
       const mblog = card.card_type === 9 ? card.mblog
         : card.card_type === 11 ? card.card_group?.find((s: { card_type: number }) => s.card_type === 9)?.mblog
         : null
-      if (!mblog) continue
+      
+      if (!mblog) {
+        console.log('[ENRICH-DETAIL] no mblog in this card')
+        continue
+      }
+      
+      console.log('[ENRICH-DETAIL] mblog user:', mblog.user?.screen_name, 'has pics:', !!(mblog.pics?.length), 'has page_info:', !!mblog.page_info)
 
       const rawText = stripHtml(mblog.text || "")
       const cleanText = stripWeiboTags(rawText).substring(0, 300)
@@ -83,13 +103,21 @@ async function fetchTopPost(keyword: string): Promise<{
         authorName: mblog.user?.screen_name || undefined,
         authorAvatar: mblog.user?.profile_image_url || undefined,
       }
-      // TEST LOG - 获取真实 sinaimg URL
-      console.log('[TEST] authorAvatar:', result.authorAvatar)
-      console.log('[TEST] imageUrl:', result.imageUrl)
+      
+      console.log('[ENRICH-DETAIL] SUCCESS:', JSON.stringify({
+        authorName: result.authorName,
+        authorAvatar: result.authorAvatar?.substring(0, 60),
+        imageUrl: result.imageUrl?.substring(0, 60),
+        mediaType: result.mediaType,
+        hasPics: pics.length,
+      }))
       return result
     }
+    
+    console.log('[ENRICH-DETAIL] no valid mblog found after iterating all cards')
     return null
-  } catch {
+  } catch (e) {
+    console.log('[ENRICH-DETAIL] EXCEPTION:', e instanceof Error ? e.message : String(e))
     return null
   }
 }
