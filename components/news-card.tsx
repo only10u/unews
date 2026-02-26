@@ -72,30 +72,52 @@ function getPlatformShort(platform: NewsItem["platform"]): string {
 
 /**
  * Proxy image URL to bypass anti-hotlink protections.
- * Uses images.weserv.nl public proxy for Weibo/Sinaimg domains.
+ * Priority: our own /api/proxy/image → weserv.nl → raw URL.
  */
 function proxyImageUrl(url: string | undefined): string | undefined {
   if (!url) return undefined
-  // Weibo / Sinaimg anti-hotlink domains
-  const needsProxy = /sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com/i.test(url)
+  // Domains known to have anti-hotlink
+  const needsProxy = /sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com|wimg\.cn/i.test(url)
   if (needsProxy) {
-    // weserv.nl strips referer and caches the image
-    return `https://images.weserv.nl/?url=${encodeURIComponent(url)}&w=800&q=80`
+    return `/api/proxy/image?url=${encodeURIComponent(url)}`
   }
   return url
+}
+
+/** Weserv.nl fallback when our proxy fails */
+function weservFallback(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  // Extract original URL if it's already proxied through our API
+  const match = url.match(/[?&]url=([^&]+)/)
+  const original = match ? decodeURIComponent(match[1]) : url
+  return `https://images.weserv.nl/?url=${encodeURIComponent(original)}&w=800&q=80&default=https://placehold.co/800x450/1a1a2e/666?text=`
 }
 
 export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin, onHide }: NewsCardProps) {
   const [showAiSummary, setShowAiSummary] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
-  const [imgError, setImgError] = useState(false)
+  const [imgFallbackLevel, setImgFallbackLevel] = useState(0) // 0=proxied, 1=weserv, 2=failed
   const prevEnabledRef = useRef(aiSummaryEnabled)
   const scoreLevel = getScoreLevel(item.score)
   const scoreColor = getScoreColor(item.score)
 
   const proxiedImage = proxyImageUrl(item.imageUrl)
   const proxiedAvatar = proxyImageUrl(item.authorAvatar)
+  const weservImage = weservFallback(item.imageUrl)
+
+  // The actual image URL to show, based on fallback level
+  const displayImage = imgFallbackLevel === 0 ? proxiedImage : imgFallbackLevel === 1 ? weservImage : undefined
+
+  const handleImgError = () => {
+    if (imgFallbackLevel === 0 && weservImage) {
+      console.log("[v0] Image proxy failed, trying weserv fallback:", item.imageUrl)
+      setImgFallbackLevel(1)
+    } else {
+      console.log("[v0] All image sources failed:", item.imageUrl)
+      setImgFallbackLevel(2)
+    }
+  }
 
   // React to global aiSummaryEnabled toggle
   useEffect(() => {
@@ -172,7 +194,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
     )
   })()
 
-  const hasMedia = !!(proxiedImage || item.videoUrl) && !imgError
+  const hasMedia = !!(displayImage || item.videoUrl) && imgFallbackLevel < 2
 
   return (
     <article
@@ -356,10 +378,10 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 /* --- Video: inline HTML5 player or clickable cover --- */
                 <VideoPlayer
                   videoUrl={item.videoUrl}
-                  coverUrl={proxiedImage}
+                  coverUrl={displayImage}
                   title={item.title}
                 />
-              ) : proxiedImage ? (
+              ) : displayImage ? (
                 /* --- Static image in 16:9 AspectRatio --- */
                 <a
                   href={getPlatformSearchUrl(item.platform, item.title)}
@@ -369,10 +391,10 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 >
                   <AspectRatio ratio={16 / 9}>
                     <img
-                      src={proxiedImage}
+                      src={displayImage}
                       alt={item.title}
                       loading="lazy"
-                      onError={() => setImgError(true)}
+                      onError={handleImgError}
                       className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-300"
                     />
                   </AspectRatio>

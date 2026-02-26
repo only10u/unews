@@ -136,6 +136,7 @@ export async function GET() {
           url: searchUrl,
           category: item.category || item.label_name || undefined,
           excerpt: `微博热搜"${title}"正在引发广泛讨论，多位大V参与转发评论。`,
+          imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
           topAuthor: "热搜博主",
           topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
         }
@@ -185,6 +186,7 @@ function generateFallbackData(): WeiboHotItem[] {
     hotValue: Math.floor(Math.random() * 10000000) + 500000,
     url: `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`,
     excerpt: `微博热搜"${title}"持续发酵中，多位大V参与讨论。`,
+    imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
     topAuthor: "热搜博主",
     topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
   }))

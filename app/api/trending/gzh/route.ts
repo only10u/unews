@@ -62,13 +62,13 @@ async function fetchFromHTML() {
       hotValue: hotValue || Math.max(100000 - rank * 3000, 5000),
       url,
       excerpt: `微信公众号24小时热文 #${rank}，阅读量 ${hotStr || "10万+"}`,
+      imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
       topAuthor: "公众号热文",
       topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=1aad19`,
     })
   }
 
   // Fallback: try matching the pipe-separated format from the fetched content
-  // Format: "1.|[title](url) |10.0万|"
   if (items.length === 0) {
     const pipeRegex = /(\d+)\.\|?\[([^\]]+)\][^|]*\|([^|]*)\|/g
     while ((match = pipeRegex.exec(html)) !== null) {
@@ -86,6 +86,7 @@ async function fetchFromHTML() {
         hotValue: hotValue || Math.max(100000 - rank * 3000, 5000),
         url: `https://weixin.sogou.com/weixin?query=${encodeURIComponent(title)}`,
         excerpt: `微信公众号24小时热文 #${rank}，阅读量 ${hotStr || "10万+"}`,
+        imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
         topAuthor: "公众号热文",
         topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=1aad19`,
       })
@@ -109,6 +110,7 @@ async function fetchFromHTML() {
         hotValue: Math.max(100000 - rank * 3000, 5000),
         url: `https://tophub.today${rawUrl}`,
         excerpt: `微信公众号24小时热文 #${rank}`,
+        imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
         topAuthor: "公众号热文",
         topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=1aad19`,
       })
@@ -151,6 +153,7 @@ function getStaticFallback() {
     hotValue: Math.max(100000 - i * 4000, 5000),
     url: `https://weixin.sogou.com/weixin?query=${encodeURIComponent(title)}`,
     excerpt: `微信公众号24小时热文 #${i + 1}`,
+    imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
     topAuthor: "公众号热文",
     topAuthorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=1aad19`,
   }))
