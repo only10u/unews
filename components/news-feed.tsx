@@ -201,31 +201,32 @@ function formatHotValue(n: number): string {
 /** SWR fetcher for trending data - includes deep content fields */
 async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
   try {
-    const res = await fetch(`/api/v2/${platform}`)
+    const res = await fetch(`/api/trending/${platform}`)
     if (res.ok) {
       const data = await res.json()
       if (Array.isArray(data) && data.length > 0) {
         return data.map(
           (item: {
             rank?: number; title?: string; hotValue?: number; url?: string;
-            excerpt?: string; imageUrl?: string; videoUrl?: string;
+            excerpt?: string; imageUrl?: string; imageurl?: string; videoUrl?: string;
             mediaType?: "image" | "video";
             topAuthor?: string; topAuthorAvatar?: string;
             authorName?: string; authorAvatar?: string;
-            detailContent?: string;
+            detailContent?: string; summary?: string;
           }, i: number) => ({
             id: `${platform[0]}${i + 1}`,
             rank: item.rank || i + 1,
             title: item.title || "",
             hotValue: item.hotValue || 0,
             url: item.url || "",
-            excerpt: item.excerpt,
-            imageUrl: item.imageUrl,
-            videoUrl: item.videoUrl,
+            // Compatible with both old and new field names
+            excerpt: item.excerpt || item.summary || "",
+            imageUrl: item.imageUrl || item.imageurl || "",
+            videoUrl: item.videoUrl || "",
             mediaType: item.mediaType,
-            topAuthor: item.topAuthor || item.authorName,
-            topAuthorAvatar: item.topAuthorAvatar || item.authorAvatar,
-            detailContent: item.detailContent,
+            topAuthor: item.authorName || item.topAuthor || "热搜博主",
+            topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
+            detailContent: item.detailContent || "",
           })
         )
       }
