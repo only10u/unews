@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v6
+// Force redeploy: v7 - FETCH-V2 三层fallback
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
