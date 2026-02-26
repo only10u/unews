@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-// Weibo trending - v5 rebuilt from scratch
+// Weibo trending - v6 NEW PATH to bypass Turbopack cache
 interface WeiboHotItem {
   rank: number
   title: string
@@ -84,8 +84,8 @@ async function fetchTopPost(keyword: string): Promise<{
         authorAvatar: mblog.user?.profile_image_url || undefined,
       }
       // TEST LOG - 获取真实 sinaimg URL
-      console.log('[TEST] authorAvatar:', result.authorAvatar)
-      console.log('[TEST] imageUrl:', result.imageUrl)
+      console.log('[TEST-V2] authorAvatar:', result.authorAvatar)
+      console.log('[TEST-V2] imageUrl:', result.imageUrl)
       return result
     }
     return null
@@ -95,6 +95,8 @@ async function fetchTopPost(keyword: string): Promise<{
 }
 
 export async function GET() {
+  console.log('[TEST-V2] /api/v2/weibo called - this confirms new route is loaded!')
+  
   const now = Date.now()
   if (cache && now - cache.timestamp < CACHE_TTL) {
     return NextResponse.json(cache.data)
@@ -153,16 +155,18 @@ export async function GET() {
       }
     }
 
-    // Debug
-    console.log("[v0] Weibo items:", items.length, "sample:", JSON.stringify({
-      title: items[0]?.title, authorName: items[0]?.authorName,
-      img: items[0]?.imageUrl?.substring(0, 50), media: items[0]?.mediaType,
+    console.log("[TEST-V2] Weibo enrichment done, sample:", JSON.stringify({
+      title: items[0]?.title,
+      authorName: items[0]?.authorName,
+      authorAvatar: items[0]?.authorAvatar?.substring(0, 60),
+      imageUrl: items[0]?.imageUrl?.substring(0, 60),
+      mediaType: items[0]?.mediaType,
     }))
 
     cache = { data: items, timestamp: now }
     return NextResponse.json(items)
   } catch (error) {
-    console.error("[v0] Weibo error:", error)
+    console.error("[TEST-V2] Weibo error:", error)
     if (cache) return NextResponse.json(cache.data)
     return NextResponse.json(generateFallback())
   }
@@ -174,7 +178,6 @@ function generateFallback(): WeiboHotItem[] {
     "BNB Chain新升级", "AI Agent代币暴涨", "链上巨鲸大额转账",
     "SEC加密监管新动向", "Meme币百倍神话", "DeFi TVL创新高",
     "NFT市场回暖", "Layer2生态格局", "稳定币市值突破2000亿",
-    "加密行业裁员潮", "比特币减半效应", "Web3游戏爆款",
   ]
   return topics.map((title, i) => ({
     rank: i + 1,

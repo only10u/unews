@@ -201,7 +201,7 @@ function formatHotValue(n: number): string {
 /** SWR fetcher for trending data - includes deep content fields */
 async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
   try {
-    const res = await fetch(`/api/trending/${platform}`)
+    const res = await fetch(`/api/v2/${platform}`)
     if (res.ok) {
       const data = await res.json()
       if (Array.isArray(data) && data.length > 0) {
