@@ -74,7 +74,7 @@ async function fetchTopPost(keyword: string): Promise<{
         || undefined
       const videoThumb = mblog.page_info?.page_pic?.url || undefined
 
-      return {
+      const result = {
         excerpt: cleanText?.substring(0, 120) || undefined,
         detailContent: cleanText || undefined,
         imageUrl: firstPic || videoThumb || undefined,
@@ -83,6 +83,10 @@ async function fetchTopPost(keyword: string): Promise<{
         authorName: mblog.user?.screen_name || undefined,
         authorAvatar: mblog.user?.profile_image_url || undefined,
       }
+      // TEST LOG - 获取真实 sinaimg URL
+      console.log('[TEST] authorAvatar:', result.authorAvatar)
+      console.log('[TEST] imageUrl:', result.imageUrl)
+      return result
     }
     return null
   } catch {
