@@ -58,6 +58,9 @@ export interface NewsItem {
   url: string
   imageUrl?: string
   videoUrl?: string
+  mediaType?: "image" | "video"
+  detailContent?: string     // pinned/top post full text
+  detailLoaded?: boolean     // whether deep content is loaded
   // Rank tracking fields
   platformRank?: number         // current rank on platform (e.g. Weibo #5)
   prevPlatformRank?: number     // previous rank (for delta calculation)
@@ -81,8 +84,11 @@ export interface TrendingItem {
   excerpt?: string           // first post summary text
   imageUrl?: string          // first image from top post
   videoUrl?: string          // video link if applicable
+  mediaType?: "image" | "video" // auto-detected media type
   topAuthor?: string         // top post author name
   topAuthorAvatar?: string   // top post author avatar
+  detailContent?: string     // pinned/top post full text
+  detailLoaded?: boolean     // whether detail has been fetched
 }
 
 export interface CryptoPrice {
@@ -350,7 +356,7 @@ export const mockNewsData: NewsItem[] = [
     authorAvatar: "https://api.dicebear.com/7.x/initials/svg?seed=CL&backgroundColor=0ea5e9",
     authorVerified: true,
     authorFollowers: "2800万",
-    title: "香港虚拟资产交易所牌照再添两家",
+    title: "香港虚拟资产交易��牌照再添两家",
     summary: "香港证监会今日宣布，再向两家加密货币交易平台发放虚拟资产交易所牌照。至此，香港持牌交易所已达8家，监管框架持续完善。",
     aiSummary: "香港持牌交易所增至8家，监管环境持续改善。亚太地区加密合规化进程加速，利好合规交易平台和亚洲市场流动性。",
     score: 7.1,

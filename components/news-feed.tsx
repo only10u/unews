@@ -180,6 +180,8 @@ function trendingToNewsItems(
       url: item.url,
       imageUrl: item.imageUrl,
       videoUrl: item.videoUrl,
+      mediaType: item.mediaType,
+      detailContent: item.detailContent,
       platformRank: item.rank,
       prevPlatformRank: item.prevRank,
       rankDelta: delta,
@@ -196,7 +198,7 @@ function formatHotValue(n: number): string {
   return n.toLocaleString()
 }
 
-/** SWR fetcher for trending data - now includes deep content fields */
+/** SWR fetcher for trending data - includes deep content fields */
 async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
   try {
     const res = await fetch(`/api/trending/${platform}`)
@@ -207,7 +209,9 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
           (item: {
             rank?: number; title?: string; hotValue?: number; url?: string;
             excerpt?: string; imageUrl?: string; videoUrl?: string;
+            mediaType?: "image" | "video";
             topAuthor?: string; topAuthorAvatar?: string;
+            detailContent?: string;
           }, i: number) => ({
             id: `${platform[0]}${i + 1}`,
             rank: item.rank || i + 1,
@@ -217,8 +221,10 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             excerpt: item.excerpt,
             imageUrl: item.imageUrl,
             videoUrl: item.videoUrl,
+            mediaType: item.mediaType,
             topAuthor: item.topAuthor,
             topAuthorAvatar: item.topAuthorAvatar,
+            detailContent: item.detailContent,
           })
         )
       }
@@ -268,21 +274,21 @@ export function NewsFeed({
     setPinnedIds(new Set())
   }, [])
 
-  // SWR for trending data - 1 second refresh
+  // SWR for trending data - 15 second refresh (detail fetching is triggered per-card on expand)
   const { data: weiboTrending, mutate: mutateWeibo } = useSWR(
     "weibo",
     trendingFetcher,
-    { refreshInterval: 1000, revalidateOnFocus: false, dedupingInterval: 500 }
+    { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
   const { data: douyinTrending, mutate: mutateDouyin } = useSWR(
     "douyin",
     trendingFetcher,
-    { refreshInterval: 1000, revalidateOnFocus: false, dedupingInterval: 500 }
+    { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
   const { data: gzhTrending, mutate: mutateGzh } = useSWR(
     "gzh",
     trendingFetcher,
-    { refreshInterval: 1000, revalidateOnFocus: false, dedupingInterval: 500 }
+    { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
 
   // Convert trending to news items

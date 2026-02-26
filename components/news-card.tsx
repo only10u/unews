@@ -24,9 +24,10 @@ import {
   TrendingDown,
   Flame,
   ImageOff,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { AspectRatio } from "@/components/ui/aspect-ratio"
-
 
 interface NewsCardProps {
   item: NewsItem
@@ -70,13 +71,9 @@ function getPlatformShort(platform: NewsItem["platform"]): string {
   }
 }
 
-/**
- * Proxy image URL to bypass anti-hotlink protections.
- * Priority: our own /api/proxy/image → weserv.nl → raw URL.
- */
+/** Proxy images to bypass anti-hotlink */
 function proxyImageUrl(url: string | undefined): string | undefined {
   if (!url) return undefined
-  // Domains known to have anti-hotlink
   const needsProxy = /sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com|wimg\.cn/i.test(url)
   if (needsProxy) {
     return `/api/proxy/image?url=${encodeURIComponent(url)}`
@@ -84,42 +81,143 @@ function proxyImageUrl(url: string | undefined): string | undefined {
   return url
 }
 
-/** Weserv.nl fallback when our proxy fails */
-function weservFallback(url: string | undefined): string | undefined {
-  if (!url) return undefined
-  // Extract original URL if it's already proxied through our API
-  const match = url.match(/[?&]url=([^&]+)/)
-  const original = match ? decodeURIComponent(match[1]) : url
-  return `https://images.weserv.nl/?url=${encodeURIComponent(original)}&w=800&q=80&default=https://placehold.co/800x450/1a1a2e/666?text=`
+/** Detect media type from URL */
+function detectMediaType(url: string | undefined): "image" | "video" | null {
+  if (!url) return null
+  if (/\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(url)) return "video"
+  if (/\.(jpg|jpeg|png|gif|webp|avif|bmp|svg)(\?|$)/i.test(url)) return "image"
+  if (/video|play|mp4/i.test(url)) return "video"
+  return "image"
 }
 
+/** Weserv fallback */
+function weservFallback(url: string | undefined): string | undefined {
+  if (!url) return undefined
+  const match = url.match(/[?&]url=([^&]+)/)
+  const original = match ? decodeURIComponent(match[1]) : url
+  return `https://images.weserv.nl/?url=${encodeURIComponent(original)}&w=800&q=80`
+}
+
+// ============================================================
+// MediaSkeleton - pulse placeholder during detail loading
+// ============================================================
+function MediaSkeleton() {
+  return (
+    <div className="mb-3 rounded-lg overflow-hidden border border-border/20">
+      <AspectRatio ratio={16 / 9}>
+        <div className="w-full h-full bg-secondary animate-pulse flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 size={20} className="text-muted-foreground/40 animate-spin" />
+            <span className="text-[10px] text-muted-foreground/40">
+              {"正在抓取置顶内容..."}
+            </span>
+          </div>
+        </div>
+      </AspectRatio>
+    </div>
+  )
+}
+
+// ============================================================
+// DetailContentSkeleton - text placeholder
+// ============================================================
+function DetailContentSkeleton() {
+  return (
+    <div className="mb-3 p-3 rounded-lg bg-muted/30 border border-border/20 space-y-2">
+      <div className="h-3 w-3/4 bg-secondary rounded animate-pulse" />
+      <div className="h-3 w-full bg-secondary rounded animate-pulse" />
+      <div className="h-3 w-1/2 bg-secondary rounded animate-pulse" />
+    </div>
+  )
+}
+
+// ============================================================
+// Main NewsCard
+// ============================================================
 export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin, onHide }: NewsCardProps) {
   const [showAiSummary, setShowAiSummary] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
-  const [imgFallbackLevel, setImgFallbackLevel] = useState(0) // 0=proxied, 1=weserv, 2=failed
+  const [imgFallbackLevel, setImgFallbackLevel] = useState(0)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [detailData, setDetailData] = useState<{
+    detailContent: string
+    mediaUrl: string | null
+    mediaType: "image" | "video" | null
+    authorName: string | null
+  } | null>(null)
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false)
+  const [detailError, setDetailError] = useState(false)
   const prevEnabledRef = useRef(aiSummaryEnabled)
   const scoreLevel = getScoreLevel(item.score)
   const scoreColor = getScoreColor(item.score)
 
-  const proxiedImage = proxyImageUrl(item.imageUrl)
-  const proxiedAvatar = proxyImageUrl(item.authorAvatar)
-  const weservImage = weservFallback(item.imageUrl)
+  // ---- Determine display media ----
+  // Use deep-scraped detail media if available, else use item-level media
+  const rawImage = detailData?.mediaUrl && detailData.mediaType === "image"
+    ? detailData.mediaUrl
+    : item.imageUrl
+  const rawVideo = detailData?.mediaUrl && detailData.mediaType === "video"
+    ? detailData.mediaUrl
+    : item.videoUrl
 
-  // The actual image URL to show, based on fallback level
-  const displayImage = imgFallbackLevel === 0 ? proxiedImage : imgFallbackLevel === 1 ? weservImage : undefined
+  const proxiedImage = proxyImageUrl(rawImage)
+  const proxiedAvatar = proxyImageUrl(
+    detailData?.authorName ? undefined : item.authorAvatar
+  ) || proxyImageUrl(item.authorAvatar)
+  const weservImage = weservFallback(rawImage)
+
+  const displayImage = imgFallbackLevel === 0 ? proxiedImage
+    : imgFallbackLevel === 1 ? weservImage
+    : undefined
+
+  const effectiveMediaType = detailData?.mediaType
+    || item.mediaType
+    || (rawVideo ? "video" : rawImage ? detectMediaType(rawImage) : null)
 
   const handleImgError = () => {
     if (imgFallbackLevel === 0 && weservImage) {
-      console.log("[v0] Image proxy failed, trying weserv fallback:", item.imageUrl)
       setImgFallbackLevel(1)
     } else {
-      console.log("[v0] All image sources failed:", item.imageUrl)
       setImgFallbackLevel(2)
     }
   }
 
-  // React to global aiSummaryEnabled toggle
+  // ---- Detail content ----
+  const displayContent = detailData?.detailContent || item.detailContent || item.summary
+  const displayAuthor = detailData?.authorName || item.author
+
+  // ---- Deep fetch on expand ----
+  useEffect(() => {
+    if (!isExpanded || detailData || isLoadingDetail || item.detailLoaded) return
+
+    setIsLoadingDetail(true)
+    setDetailError(false)
+
+    const platformMap: Record<string, string> = {
+      weibo: "weibo",
+      douyin: "douyin",
+      gongzhonghao: "gzh",
+    }
+    const pKey = platformMap[item.platform] || item.platform
+
+    fetch(`/api/trending/detail?platform=${pKey}&keyword=${encodeURIComponent(item.title)}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Detail fetch failed")
+        const data = await res.json()
+        setDetailData(data)
+        // Reset image fallback when new media arrives
+        if (data.mediaUrl) setImgFallbackLevel(0)
+      })
+      .catch(() => {
+        setDetailError(true)
+      })
+      .finally(() => {
+        setIsLoadingDetail(false)
+      })
+  }, [isExpanded, detailData, isLoadingDetail, item.detailLoaded, item.platform, item.title])
+
+  // AI summary toggle
   useEffect(() => {
     if (aiSummaryEnabled && !prevEnabledRef.current) {
       setShowAiSummary(true)
@@ -167,13 +265,12 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
     }
   }
 
-  // Build rank tracking indicator
+  // Build rank indicator
   const rankIndicator = (() => {
     if (!item.platformRank) return null
     const platformName = getPlatformShort(item.platform)
     const rankNum = item.platformRank
     const delta = item.rankDelta ?? 0
-
     return (
       <span className="inline-flex items-center gap-1 text-[10px] font-mono">
         <span className="text-muted-foreground">{platformName}</span>
@@ -194,12 +291,13 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
     )
   })()
 
-  const hasMedia = !!(displayImage || item.videoUrl) && imgFallbackLevel < 2
+  const hasMedia = !!(displayImage || rawVideo) && imgFallbackLevel < 2
+  const isDirectVideo = rawVideo ? /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(rawVideo) : false
 
   return (
     <article
       className={cn(
-        "group relative p-4 transition-all",
+        "group relative transition-all",
         "border-b border-border/30",
         "hover:bg-accent/30",
         isNew && "animate-new-item animate-slide-in",
@@ -208,7 +306,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         item.isBursting && "animate-burst"
       )}
     >
-      {/* Action buttons: Pin + Hide (top-left, visible on hover) */}
+      {/* ─── Action buttons (hover) ─── */}
       <div className="absolute top-2 left-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={(e) => { e.stopPropagation(); onTogglePin?.(item.id) }}
@@ -233,9 +331,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         </button>
       </div>
 
-      {/* Pinned indicator */}
+      {/* ─── Pinned indicator ─── */}
       {isPinned && (
-        <div className="flex items-center gap-1.5 mb-2">
+        <div className="flex items-center gap-1.5 px-4 pt-3">
           <Pin size={12} className="text-primary fill-primary" />
           <span className="text-[11px] font-bold text-primary">
             {"置顶 - " + getScoreLabel(item.score)}
@@ -243,105 +341,192 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         </div>
       )}
 
-      <div className="flex gap-3">
-        {/* Author Avatar */}
-        <div className="relative shrink-0">
-          <div className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
-            {proxiedAvatar ? (
+      {/* ─── Collapsed: Thumbnail + Title row (clickable to expand) ─── */}
+      <div
+        className="flex gap-3 p-4 cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setIsExpanded(!isExpanded) }}
+      >
+        {/* Thumbnail (small, left side) */}
+        <div className="relative shrink-0 w-20 h-14 rounded-md overflow-hidden bg-secondary">
+          {displayImage ? (
+            <img
+              src={displayImage}
+              alt=""
+              loading="lazy"
+              onError={handleImgError}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
               <img
-                src={proxiedAvatar}
-                alt={item.author}
-                className="object-cover w-full h-full"
-                loading="lazy"
+                src={getPlatformIcon(item.platform)}
+                alt={getPlatformLabel(item.platform)}
+                width={24}
+                height={24}
+                className="opacity-50"
               />
-            ) : (
-              <span className="text-muted-foreground text-lg font-bold">
-                {item.author.charAt(0)}
-              </span>
-            )}
-          </div>
-          {/* Platform mini icon */}
-          <div className="absolute -bottom-0.5 -right-0.5 w-[18px] h-[18px] rounded-full overflow-hidden border-2 border-background">
+            </div>
+          )}
+          {/* Video badge on thumbnail */}
+          {effectiveMediaType === "video" && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+              <Play size={14} className="text-white" fill="white" fillOpacity={0.8} />
+            </div>
+          )}
+          {/* Platform mini badge */}
+          <div className="absolute bottom-0.5 right-0.5 w-[14px] h-[14px] rounded-full overflow-hidden border border-background">
             <img
               src={getPlatformIcon(item.platform)}
               alt={getPlatformLabel(item.platform)}
-              width={18}
-              height={18}
+              width={14}
+              height={14}
               className="object-cover"
-              loading="lazy"
             />
           </div>
         </div>
 
-        {/* Content */}
+        {/* Title + meta */}
         <div className="flex-1 min-w-0">
-          {/* Author line */}
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="font-bold text-foreground text-sm truncate">
-              {item.author}
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <span className="font-bold text-foreground text-[13px] truncate">
+              {displayAuthor}
             </span>
             {item.authorVerified && (
-              <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-primary/15 text-primary font-medium">
+              <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] bg-primary/15 text-primary font-medium">
                 认证
               </span>
             )}
-            {item.isOfficial && (
-              <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] bg-red-500/15 text-red-400 font-medium">
-                官方
-              </span>
-            )}
-            <span className="text-[11px] text-muted-foreground shrink-0">
-              {"粉丝 " + item.authorFollowers}
-            </span>
-
-            {/* Rank tracking indicator */}
             {rankIndicator}
-
-            {/* Burst tag */}
             {item.isBursting && (
-              <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] bg-orange-500/15 text-orange-400 font-bold">
-                <Flame size={10} />
-                飙升中
+              <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-orange-500/15 text-orange-400 font-bold">
+                <Flame size={9} />
+                飙升
               </span>
             )}
-
-            <span className="text-muted-foreground text-[11px] ml-auto shrink-0">
+            <span className="text-muted-foreground text-[10px] ml-auto shrink-0">
               {item.timestamp}
             </span>
-            {/* AI Summary Button */}
-            <button
-              onClick={handleToggleSummary}
-              className={cn(
-                "shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium transition-all",
-                showAiSummary
-                  ? "bg-primary/20 text-primary"
-                  : "bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10"
-              )}
-            >
-              {isLoadingSummary ? (
-                <Loader2 size={10} className="animate-spin" />
-              ) : (
-                <Sparkles size={10} />
-              )}
-              AI总结
-            </button>
           </div>
+          <h3 className="font-bold text-foreground text-sm leading-snug line-clamp-2 text-balance">
+            {item.title}
+          </h3>
+          {/* Score badge inline */}
+          <div className="flex items-center gap-2 mt-1">
+            <div
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold",
+                scoreLevel === "golden" && "animate-pulse-glow"
+              )}
+              style={{
+                background: `color-mix(in srgb, ${scoreColor} 15%, transparent)`,
+                color: scoreColor,
+                border: `1px solid color-mix(in srgb, ${scoreColor} 30%, transparent)`,
+              }}
+            >
+              <span>{item.score.toFixed(1)}</span>
+              <span className="opacity-70">{getScoreLabel(item.score)}</span>
+            </div>
+            {item.tags.slice(0, 2).map((tag) => (
+              <span key={tag} className="px-1.5 py-0.5 rounded-full text-[9px] bg-secondary text-muted-foreground">
+                {tag}
+              </span>
+            ))}
+            {/* Expand indicator */}
+            <span className="ml-auto text-muted-foreground/50">
+              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </span>
+          </div>
+        </div>
+      </div>
 
-          {/* Title - links to platform search results */}
-          <h3 className="font-bold text-foreground mb-1 text-balance leading-relaxed">
+      {/* ─── Expanded: Full content with AnimatePresence-like transition ─── */}
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-300 ease-in-out",
+          isExpanded ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
+        <div className="px-4 pb-4 space-y-3">
+          {/* ── Detail Content Box (pinned post text) ── */}
+          {isLoadingDetail ? (
+            <DetailContentSkeleton />
+          ) : detailData?.detailContent || item.detailContent ? (
+            <div className="p-3 rounded-lg bg-muted/40 border border-border/20 backdrop-blur-sm">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Pin size={10} className="text-primary" />
+                <span className="text-[10px] font-bold text-primary">置顶博文</span>
+                {detailData?.authorName && (
+                  <span className="text-[10px] text-muted-foreground ml-1">
+                    {"@" + detailData.authorName}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-foreground/85 leading-relaxed line-clamp-4">
+                {detailData?.detailContent || item.detailContent}
+              </p>
+            </div>
+          ) : detailError ? (
             <a
               href={getPlatformSearchUrl(item.platform, item.title)}
               target="_blank"
               rel="noopener noreferrer"
-              className="hover:text-primary transition-colors"
+              className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/20 text-sm text-primary hover:bg-muted/50 transition-colors"
             >
-              {item.title}
+              <ExternalLink size={14} />
+              {"点击跳转原文查看详情"}
             </a>
-          </h3>
+          ) : null}
 
-          {/* AI Summary Panel */}
+          {/* ── Media Container ── */}
+          {isLoadingDetail && !hasMedia ? (
+            <MediaSkeleton />
+          ) : hasMedia ? (
+            <div className="rounded-lg overflow-hidden border border-border/20 shadow-sm shadow-black/20">
+              {effectiveMediaType === "video" && rawVideo ? (
+                <VideoPlayer
+                  videoUrl={rawVideo}
+                  coverUrl={displayImage}
+                  title={item.title}
+                  isDirectVideo={isDirectVideo}
+                />
+              ) : displayImage ? (
+                <a
+                  href={getPlatformSearchUrl(item.platform, item.title)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                >
+                  <AspectRatio ratio={16 / 9}>
+                    <img
+                      src={displayImage}
+                      alt={item.title}
+                      loading="lazy"
+                      onError={handleImgError}
+                      className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-300"
+                    />
+                  </AspectRatio>
+                </a>
+              ) : null}
+            </div>
+          ) : detailError && (
+            <a
+              href={getPlatformSearchUrl(item.platform, item.title)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/20 text-sm text-primary hover:bg-muted/50 transition-colors"
+            >
+              <ExternalLink size={14} />
+              {"点击跳转原文查看详情"}
+            </a>
+          )}
+
+          {/* ── AI Summary ── */}
           {showAiSummary && (
-            <div className="mb-3 p-3 rounded-lg bg-primary/5 border border-primary/15 relative animate-slide-in">
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/15 relative">
               <button
                 onClick={() => setShowAiSummary(false)}
                 className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors"
@@ -366,100 +551,12 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             </div>
           )}
 
-          {/* Summary */}
-          <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2 mb-3">
-            {item.summary}
-          </p>
-
-          {/* ===== Media Container (16:9 AspectRatio) ===== */}
-          {hasMedia && (
-            <div className="mb-3 rounded-lg overflow-hidden border border-border/20 shadow-sm shadow-black/20">
-              {item.videoUrl ? (
-                /* --- Video: inline HTML5 player or clickable cover --- */
-                <VideoPlayer
-                  videoUrl={item.videoUrl}
-                  coverUrl={displayImage}
-                  title={item.title}
-                />
-              ) : displayImage ? (
-                /* --- Static image in 16:9 AspectRatio --- */
-                <a
-                  href={getPlatformSearchUrl(item.platform, item.title)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <AspectRatio ratio={16 / 9}>
-                    <img
-                      src={displayImage}
-                      alt={item.title}
-                      loading="lazy"
-                      onError={handleImgError}
-                      className="w-full h-full object-cover hover:scale-[1.02] transition-transform duration-300"
-                    />
-                  </AspectRatio>
-                </a>
-              ) : null}
-            </div>
-          )}
-
-          {/* Source Attribution */}
-          {hasMedia && (
-            <div className="flex items-center gap-2 mb-3 text-[10px] text-muted-foreground/60">
-              <span>{"内容来源于该热搜下热度最高的" + (item.videoUrl ? "视频" : "贴文")}</span>
-              {item.author && (
-                <>
-                  <span className="text-border">|</span>
-                  <div className="flex items-center gap-1">
-                    {proxiedAvatar && (
-                      <img
-                        src={proxiedAvatar}
-                        alt={item.author}
-                        width={14}
-                        height={14}
-                        className="rounded-full"
-                        loading="lazy"
-                      />
-                    )}
-                    <span>{item.author}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Score Badge + Tags */}
-          <div className="flex items-center flex-wrap gap-2 mb-2">
-            <div
-              className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold",
-                scoreLevel === "golden" && "animate-pulse-glow"
-              )}
-              style={{
-                background: `color-mix(in srgb, ${scoreColor} 15%, transparent)`,
-                color: scoreColor,
-                border: `1px solid color-mix(in srgb, ${scoreColor} 30%, transparent)`,
-              }}
-            >
-              <span>{item.score.toFixed(1)}</span>
-              <span className="opacity-70">{getScoreLabel(item.score)}</span>
-            </div>
-            {item.tags.map((tag) => (
-              <span
-                key={tag}
-                className="px-2 py-0.5 rounded-full text-[11px] bg-secondary text-muted-foreground"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
-
-          {/* Score reason */}
-          <p className="text-[11px] text-muted-foreground/70 mb-3 italic">
+          {/* ── AI Score reason ── */}
+          <p className="text-[11px] text-muted-foreground/70 italic">
             {"AI: " + item.scoreReason}
           </p>
 
-          {/* Stats */}
+          {/* ── Stats bar ── */}
           <div className="flex items-center gap-4 text-muted-foreground">
             <span className="flex items-center gap-1 text-[11px] hover:text-red-400 transition-colors cursor-pointer">
               <Heart size={12} />
@@ -473,6 +570,19 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
               <MessageCircle size={12} />
               {formatNumber(item.comments)}
             </span>
+            {/* AI summary button */}
+            <button
+              onClick={(e) => { e.stopPropagation(); handleToggleSummary() }}
+              className={cn(
+                "shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium transition-all",
+                showAiSummary
+                  ? "bg-primary/20 text-primary"
+                  : "bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10"
+              )}
+            >
+              {isLoadingSummary ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+              AI总结
+            </button>
             <div className="ml-auto flex items-center gap-2">
               <a
                 href={item.url}
@@ -513,22 +623,28 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   )
 }
 
-/* ============================
-   VideoPlayer sub-component
-   ============================ */
-function VideoPlayer({ videoUrl, coverUrl, title }: { videoUrl: string; coverUrl?: string; title: string }) {
+// ============================================================
+// VideoPlayer sub-component
+// ============================================================
+function VideoPlayer({
+  videoUrl,
+  coverUrl,
+  title,
+  isDirectVideo,
+}: {
+  videoUrl: string
+  coverUrl?: string
+  title: string
+  isDirectVideo: boolean
+}) {
   const [playing, setPlaying] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
-
-  // Check if the video URL is a playable direct link (mp4/webm/m3u8)
-  const isDirectVideo = /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(videoUrl)
 
   const handlePlay = () => {
     if (isDirectVideo) {
       setPlaying(true)
       setTimeout(() => videoRef.current?.play(), 100)
     } else {
-      // Open external video in new tab
       window.open(videoUrl, "_blank", "noopener,noreferrer")
     }
   }
@@ -570,7 +686,6 @@ function VideoPlayer({ videoUrl, coverUrl, title }: { videoUrl: string; coverUrl
             <ImageOff size={28} className="text-muted-foreground/30" />
           </div>
         )}
-        {/* Semi-transparent Play icon overlay */}
         <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover/video:bg-black/30 transition-colors">
           <div className="w-12 h-12 rounded-full bg-white/25 backdrop-blur-sm flex items-center justify-center group-hover/video:bg-white/40 group-hover/video:scale-110 transition-all shadow-lg">
             <Play size={22} className="text-white ml-0.5 drop-shadow-md" fill="white" fillOpacity={0.9} />

@@ -9,6 +9,7 @@ interface WeiboHotItem {
   excerpt?: string
   imageUrl?: string
   videoUrl?: string
+  mediaType?: "image" | "video"
   topAuthor?: string
   topAuthorAvatar?: string
 }
@@ -155,7 +156,12 @@ export async function GET() {
         const data = result.value
         if (data.excerpt) items[i].excerpt = data.excerpt
         if (data.imageUrl) items[i].imageUrl = data.imageUrl
-        if (data.videoUrl) items[i].videoUrl = data.videoUrl
+        if (data.videoUrl) {
+          items[i].videoUrl = data.videoUrl
+          items[i].mediaType = "video"
+        } else if (data.imageUrl) {
+          items[i].mediaType = "image"
+        }
         if (data.topAuthor) items[i].topAuthor = data.topAuthor
         if (data.topAuthorAvatar) items[i].topAuthorAvatar = data.topAuthorAvatar
       }
