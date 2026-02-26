@@ -41,123 +41,125 @@ type EnrichResult = {
   authorAvatar?: string
 }
 
-/** Method 1: Weibo PC Ajax API (no login required for basic search) */
-async function tryWeiboAjax(keyword: string): Promise<EnrichResult | null> {
-  console.log('[FETCH-V2] trying method1 (weibo ajax) for:', keyword.substring(0, 12))
+/** Method 1: Fetch topic page HTML and extract og:image meta tags */
+async function tryTopicPage(keyword: string, topicUrl: string): Promise<EnrichResult | null> {
+  console.log('[FETCH-V3] trying method1 (topic page) for:', keyword.substring(0, 12))
   try {
-    const q = encodeURIComponent(keyword)
-    const res = await fetch(
-      `https://weibo.com/ajax/statuses/searchTopWeibo?q=${q}&page=1`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-          Accept: "application/json",
-          Referer: "https://weibo.com/",
-        },
-        signal: AbortSignal.timeout(4000),
-      }
-    )
-    console.log('[FETCH-V2] method1 status:', res.status)
+    const res = await fetch(topicUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "Referer": "https://weibo.com",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+      },
+      signal: AbortSignal.timeout(6000),
+    })
+    console.log('[FETCH-V3] method1 status:', res.status, 'for:', keyword.substring(0, 8))
     if (!res.ok) return null
-    
-    const text = await res.text()
-    // Check if response is JSON
-    if (!text.startsWith('{') && !text.startsWith('[')) {
-      console.log('[FETCH-V2] method1 not JSON, first 50 chars:', text.substring(0, 50))
-      return null
+
+    const html = await res.text()
+    console.log('[FETCH-V3] method1 html length:', html.length, 'has-render-data:', html.includes('$render_data'))
+
+    // Try to extract $render_data JSON first (contains full weibo data)
+    const renderMatch = html.match(/\$render_data\s*=\s*(\[[\s\S]*?\])\s*\[0\]/)
+    if (renderMatch) {
+      try {
+        const data = JSON.parse(renderMatch[1])
+        const status = data?.[0]?.status || data?.[0]?.data?.statuses?.[0]
+        if (status) {
+          const pics = status.pics || []
+          const firstPic = pics.length > 0 ? (pics[0].large?.url || pics[0].url) : undefined
+          console.log('[FETCH-V3] method1 render_data found user:', status.user?.screen_name, 'pics:', pics.length)
+          return {
+            excerpt: stripHtml(status.text || "").substring(0, 120),
+            detailContent: stripHtml(status.text || "").substring(0, 300),
+            imageUrl: firstPic,
+            authorName: status.user?.screen_name,
+            authorAvatar: status.user?.profile_image_url,
+            mediaType: firstPic ? "image" : undefined,
+          }
+        }
+      } catch (e) {
+        console.log('[FETCH-V3] method1 render_data parse failed:', e instanceof Error ? e.message : String(e))
+      }
     }
-    
-    const json = JSON.parse(text)
-    const statuses = json?.statuses || json?.data?.statuses || []
-    console.log('[FETCH-V2] method1 statuses count:', statuses.length)
-    
-    if (statuses.length === 0) return null
-    
-    const first = statuses[0]
-    const rawText = stripHtml(first.text || first.text_raw || "")
-    const cleanText = stripWeiboTags(rawText).substring(0, 300)
-    const pics = first.pic_infos ? Object.values(first.pic_infos) : (first.pics || [])
-    const firstPic = pics.length > 0 ? ((pics[0] as {large?: {url: string}, url?: string}).large?.url || (pics[0] as {url?: string}).url) : undefined
-    
-    const result: EnrichResult = {
-      excerpt: cleanText.substring(0, 120) || undefined,
-      detailContent: cleanText || undefined,
-      imageUrl: firstPic || undefined,
-      authorName: first.user?.screen_name || undefined,
-      authorAvatar: first.user?.profile_image_url || first.user?.avatar_hd || undefined,
-      mediaType: firstPic ? "image" : undefined,
+
+    // Fallback: extract og:image and og:description meta tags
+    const ogImage = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i)
+      || html.match(/<meta\s+content="([^"]+)"\s+property="og:image"/i)
+    const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]+)"/i)
+      || html.match(/<meta\s+content="([^"]+)"\s+property="og:description"/i)
+    const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i)
+      || html.match(/<meta\s+content="([^"]+)"\s+property="og:title"/i)
+
+    console.log('[FETCH-V3] method1 og:image:', ogImage?.[1]?.substring(0, 60) || 'none')
+    console.log('[FETCH-V3] method1 og:desc:', ogDesc?.[1]?.substring(0, 40) || 'none')
+
+    if (ogImage?.[1] || ogDesc?.[1]) {
+      return {
+        imageUrl: ogImage?.[1]?.replace(/^\/\//, 'https://'),
+        excerpt: ogDesc?.[1] || ogTitle?.[1] || keyword,
+        detailContent: ogDesc?.[1] || `#${keyword}# 正在微博热议`,
+        authorName: "微博热搜",
+        mediaType: ogImage?.[1] ? "image" : undefined,
+      }
     }
-    
-    console.log('[FETCH-V2] method1 SUCCESS:', JSON.stringify({
-      authorName: result.authorName,
-      imageUrl: result.imageUrl?.substring(0, 50),
-    }))
-    return result
+
+    console.log('[FETCH-V3] method1 no og tags found')
+    return null
   } catch (e) {
-    console.log('[FETCH-V2] method1 error:', e instanceof Error ? e.message : String(e))
+    console.log('[FETCH-V3] method1 exception:', e instanceof Error ? e.message : String(e))
     return null
   }
 }
 
-/** Method 2: Sogou Weibo search (parse HTML) */
-async function trySogouWeibo(keyword: string): Promise<EnrichResult | null> {
-  console.log('[FETCH-V2] trying method2 (sogou weibo) for:', keyword.substring(0, 12))
+/** Method 2: Try TopHub API for Weibo hot topics */
+async function tryTopHub(keyword: string): Promise<EnrichResult | null> {
+  console.log('[FETCH-V3] trying method2 (tophub) for:', keyword.substring(0, 12))
   try {
-    const q = encodeURIComponent(keyword)
+    // TopHub aggregates trending content and is usually accessible
     const res = await fetch(
-      `https://weibo.sogou.com/weibo?type=2&query=${q}&ie=utf8`,
+      `https://api.vvhan.com/api/hotlist?type=weibo`,
       {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-          Accept: "text/html",
-          Referer: "https://weibo.sogou.com/",
+          "User-Agent": "Mozilla/5.0",
+          Accept: "application/json",
         },
         signal: AbortSignal.timeout(4000),
       }
     )
-    console.log('[FETCH-V2] method2 status:', res.status)
+    console.log('[FETCH-V3] method2 status:', res.status)
     if (!res.ok) return null
+
+    const json = await res.json()
+    const items = json?.data || []
+    // Find matching item by keyword
+    const match = items.find((item: { title?: string }) => 
+      item.title?.includes(keyword.substring(0, 6)) || keyword.includes(item.title?.substring(0, 6) || '')
+    )
     
-    const html = await res.text()
-    
-    // Extract content from first result using regex
-    const contentMatch = html.match(/<div[^>]*class="[^"]*txt-box[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
-    const imgMatch = html.match(/<div[^>]*class="[^"]*pic-box[^"]*"[^>]*>[\s\S]*?<img[^>]*src="([^"]+)"/i)
-    const authorMatch = html.match(/<a[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/a>/i)
-      || html.match(/<div[^>]*class="[^"]*s-p[^"]*"[^>]*>[\s\S]*?<a[^>]*>([^<]+)<\/a>/i)
-    
-    if (!contentMatch && !imgMatch) {
-      console.log('[FETCH-V2] method2 no content found in HTML')
-      return null
+    if (match) {
+      console.log('[FETCH-V3] method2 found match:', match.title?.substring(0, 20))
+      return {
+        excerpt: match.desc || match.title || keyword,
+        detailContent: match.desc || `#${keyword}# 正在热议`,
+        imageUrl: match.pic || match.cover,
+        authorName: match.author || "微博热搜",
+        mediaType: match.pic ? "image" : undefined,
+      }
     }
     
-    const excerpt = contentMatch ? stripHtml(contentMatch[1]).substring(0, 120) : undefined
-    const imageUrl = imgMatch ? imgMatch[1].replace(/^\/\//, 'https://') : undefined
-    const authorName = authorMatch ? stripHtml(authorMatch[1]) : undefined
-    
-    const result: EnrichResult = {
-      excerpt,
-      detailContent: excerpt,
-      imageUrl,
-      authorName,
-      mediaType: imageUrl ? "image" : undefined,
-    }
-    
-    console.log('[FETCH-V2] method2 SUCCESS:', JSON.stringify({
-      authorName: result.authorName,
-      hasImage: !!result.imageUrl,
-      excerptLen: result.excerpt?.length,
-    }))
-    return result
+    console.log('[FETCH-V3] method2 no match found')
+    return null
   } catch (e) {
-    console.log('[FETCH-V2] method2 error:', e instanceof Error ? e.message : String(e))
+    console.log('[FETCH-V3] method2 exception:', e instanceof Error ? e.message : String(e))
     return null
   }
 }
 
 /** Method 3: Generate placeholder content (always succeeds) */
 function generatePlaceholder(keyword: string): EnrichResult {
-  console.log('[FETCH-V2] using method3 (placeholder) for:', keyword.substring(0, 12))
+  console.log('[FETCH-V3] using method3 (placeholder) for:', keyword.substring(0, 12))
   return {
     excerpt: `#${keyword}# 正在微博热议中，点击查看详情`,
     detailContent: `话题 #${keyword}# 登上微博热搜，引发网友广泛讨论。`,
@@ -167,25 +169,25 @@ function generatePlaceholder(keyword: string): EnrichResult {
 }
 
 /** Fetch top post for a keyword - tries 3 methods in sequence */
-async function fetchTopPost(keyword: string): Promise<EnrichResult | null> {
-  console.log('[FETCH-V2] START enriching:', keyword.substring(0, 15))
+async function fetchTopPost(keyword: string, topicUrl: string): Promise<EnrichResult | null> {
+  console.log('[FETCH-V3] START enriching:', keyword.substring(0, 15))
   
-  // Method 1: Weibo Ajax API
-  const r1 = await tryWeiboAjax(keyword)
-  if (r1 && (r1.imageUrl || r1.authorName)) {
-    console.log('[FETCH-V2] method1 returned valid data')
+  // Method 1: Topic page HTML (og:image etc)
+  const r1 = await tryTopicPage(keyword, topicUrl)
+  if (r1 && (r1.imageUrl || r1.authorName !== "微博热搜")) {
+    console.log('[FETCH-V3] method1 returned valid data')
     return r1
   }
   
-  // Method 2: Sogou Weibo Search
-  const r2 = await trySogouWeibo(keyword)
+  // Method 2: TopHub aggregator API
+  const r2 = await tryTopHub(keyword)
   if (r2 && (r2.imageUrl || r2.excerpt)) {
-    console.log('[FETCH-V2] method2 returned valid data')
+    console.log('[FETCH-V3] method2 returned valid data')
     return r2
   }
   
   // Method 3: Placeholder (always returns something)
-  console.log('[FETCH-V2] all methods failed, using placeholder')
+  console.log('[FETCH-V3] all methods failed, using placeholder')
   return generatePlaceholder(keyword)
 }
 
@@ -231,7 +233,7 @@ export async function GET() {
     const BATCH = 5
     for (let i = 0; i < items.length; i += BATCH) {
       const batch = items.slice(i, i + BATCH)
-      const results = await Promise.allSettled(batch.map((it) => fetchTopPost(it.title)))
+      const results = await Promise.allSettled(batch.map((it) => fetchTopPost(it.title, it.url)))
       for (let j = 0; j < results.length; j++) {
         const r = results[j]
         if (r.status === "fulfilled" && r.value) {

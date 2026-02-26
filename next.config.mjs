@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v7 - FETCH-V2 三层fallback
+// Force redeploy: v8 - FETCH-V3 话题页og:image + TopHub
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
