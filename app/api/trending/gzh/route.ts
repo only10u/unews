@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server"
 
-// TopHub 微信24h热文榜 - v3 rewritten with enrichment pipeline
-const TOPHUB_NODE = "WnBe01o371"
-const TOPHUB_HTML_URL = `https://tophub.today/n/${TOPHUB_NODE}`
-const TOPHUB_API_KEY = "53c76260b011e6384dbb7b9ebd8d3318"
-
+// GZH (WeChat Official Accounts) trending - v5 rebuilt from scratch
 interface GzhHotItem {
+  id: string
   rank: number
   title: string
   hotValue: number
@@ -37,7 +34,7 @@ function stripHtml(html: string): string {
     .trim()
 }
 
-/** Fetch article detail via Sogou WeChat search to get real author + excerpt + image */
+/** Fetch article detail via Sogou WeChat search */
 async function fetchGzhDetail(keyword: string): Promise<{
   excerpt?: string
   detailContent?: string
@@ -46,36 +43,29 @@ async function fetchGzhDetail(keyword: string): Promise<{
   authorAvatar?: string
 } | null> {
   try {
-    const encodedQ = encodeURIComponent(keyword)
-    // Sogou WeChat search returns public account articles
-    const res = await fetch(
-      `https://weixin.sogou.com/weixin?type=2&query=${encodedQ}&ie=utf8`,
-      {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml",
-          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-          Referer: "https://weixin.sogou.com/",
-        },
-        signal: AbortSignal.timeout(5000),
-      }
-    )
+    const q = encodeURIComponent(keyword)
+    const res = await fetch(`https://weixin.sogou.com/weixin?type=2&query=${q}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html",
+        Referer: "https://weixin.sogou.com/",
+      },
+      signal: AbortSignal.timeout(5000),
+    })
     if (!res.ok) return null
     const html = await res.text()
 
-    // Extract first article: title, excerpt, image, author
-    // Pattern: <div class="txt-box"> ... <a ...>title</a> ... <p class="txt-info">excerpt</p> ... <a class="account">author</a>
-    const excerptMatch = html.match(/<p\s+class="txt-info"[^>]*>([\s\S]*?)<\/p>/i)
-    const authorMatch = html.match(/<a[^>]*class="account"[^>]*>([\s\S]*?)<\/a>/i)
-    const imgMatch = html.match(/<img[^>]+src="(https?:\/\/[^"]*mmbiz[^"]*)"[^>]*>/i)
-      || html.match(/<img[^>]+src="(\/\/[^"]*mmbiz[^"]*)"[^>]*>/i)
+    // Extract first article result
+    const titleMatch = html.match(/<a[^>]*uigs="article_title_0"[^>]*>([^<]+)/i)
+    const imgMatch = html.match(/<img[^>]*src="(https?:\/\/[^"]*mmbiz[^"]*)"/i)
+    const accountMatch = html.match(/<a[^>]*uigs="account_name_0"[^>]*>([^<]+)/i)
+    const contentMatch = html.match(/<p[^>]*class="txt-info"[^>]*>([^<]+)/i)
 
-    const excerpt = excerptMatch ? stripHtml(excerptMatch[1]).substring(0, 200) : undefined
-    const authorName = authorMatch ? stripHtml(authorMatch[1]) : undefined
-    let imageUrl = imgMatch ? imgMatch[1] : undefined
-    if (imageUrl && imageUrl.startsWith("//")) imageUrl = "https:" + imageUrl
+    if (!titleMatch && !contentMatch) return null
 
-    if (!excerpt && !authorName && !imageUrl) return null
+    const authorName = accountMatch ? stripHtml(accountMatch[1]) : undefined
+    const excerpt = contentMatch ? stripHtml(contentMatch[1]).substring(0, 150) : undefined
+    const imageUrl = imgMatch ? imgMatch[1].replace(/&amp;/g, "&") : undefined
 
     return {
       excerpt,
@@ -83,7 +73,7 @@ async function fetchGzhDetail(keyword: string): Promise<{
       imageUrl,
       authorName,
       authorAvatar: authorName
-        ? `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(authorName.substring(0, 2))}&backgroundColor=1aad19`
+        ? `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(authorName)}&backgroundColor=1aad19`
         : undefined,
     }
   } catch {
@@ -91,88 +81,87 @@ async function fetchGzhDetail(keyword: string): Promise<{
   }
 }
 
-// ─── Method 1: HTML Scraping from tophub.today ───────────────────────
+/** Scrape TopHub GZH trending page */
 async function fetchFromHTML(): Promise<GzhHotItem[]> {
-  const res = await fetch(TOPHUB_HTML_URL, {
+  const res = await fetch("https://tophub.today/n/WnBe01o371", {
     headers: {
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-      "Referer": "https://tophub.today/",
-      "Cookie": `token=${TOPHUB_API_KEY}`,
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Accept: "text/html",
     },
-    next: { revalidate: 60 },
+    signal: AbortSignal.timeout(8000),
   })
-
   if (!res.ok) throw new Error(`TopHub HTML: ${res.status}`)
   const html = await res.text()
 
   const items: GzhHotItem[] = []
-  let match
+  let match: RegExpExecArray | null
 
-  const simpleRegex = /<td[^>]*>\s*(\d+)\.\s*<\/td>\s*<td[^>]*>\s*<a\s+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>\s*<\/td>\s*<td[^>]*>([\s\S]*?)<\/td>/gi
-  while ((match = simpleRegex.exec(html)) !== null) {
+  // Pattern: <td>rank</td> ... <a href="url">title</a> ... <td>hotValue</td>
+  const rowRegex = /<tr[^>]*>[\s\S]*?<td[^>]*>\s*(\d+)\s*<\/td>[\s\S]*?<a[^>]*href="([^"]*)"[^>]*>([^<]+)<\/a>[\s\S]*?<td[^>]*>([^<]*)<\/td>[\s\S]*?<\/tr>/gi
+  while ((match = rowRegex.exec(html)) !== null && items.length < 30) {
     const rank = parseInt(match[1], 10)
     const rawUrl = match[2]
-    const title = match[3].replace(/<[^>]*>/g, "").trim()
-    const hotStr = match[4].replace(/<[^>]*>/g, "").trim()
-    const hotValue = parseHotValue(hotStr)
+    const title = stripHtml(match[3])
+    const hotStr = match[4].trim()
     if (!title || title.length < 2) continue
     const url = rawUrl.startsWith("http") ? rawUrl : `https://tophub.today${rawUrl}`
-
     items.push({
-      rank, title, url,
-      hotValue: hotValue || Math.max(100000 - rank * 3000, 5000),
-      excerpt: `微信公众号热文 #${rank}，阅读量 ${hotStr || "10万+"}`,
+      id: `gzh-${rank}`,
+      rank,
+      title,
+      hotValue: parseHotValue(hotStr) || Math.max(100000 - rank * 3000, 5000),
+      url,
+      excerpt: `公众号24h热文 #${rank}`,
       imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
       authorName: "公众号热文",
       authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=1aad19`,
     })
   }
 
+  // Fallback: simpler link-based pattern
   if (items.length === 0) {
     const linkRegex = /<a[^>]+href="(\/l\/[^"]*)"[^>]*>([^<]{4,})<\/a>/gi
     let rank = 0
     while ((match = linkRegex.exec(html)) !== null && rank < 30) {
       rank++
-      const rawUrl = match[1]
-      const title = match[2].trim()
+      const title = stripHtml(match[2])
       if (!title || title.length < 4) { rank--; continue }
       items.push({
-        rank, title,
+        id: `gzh-${rank}`,
+        rank,
+        title,
         hotValue: Math.max(100000 - rank * 3000, 5000),
-        url: `https://tophub.today${rawUrl}`,
-        excerpt: `微信公众号热文 #${rank}`,
+        url: `https://tophub.today${match[1]}`,
+        excerpt: `公众号24h热文 #${rank}`,
         imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
         authorName: "公众号热文",
         authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=1aad19`,
       })
     }
   }
-
-  if (items.length === 0) throw new Error("HTML parse returned 0 items")
   return items
 }
 
-// ─── Static fallback ─────────────────────────────────────────────────
 function getStaticFallback(): GzhHotItem[] {
   const titles = [
-    "北大教授发现1426亿棵树！", "降息50个基点",
-    "香港科技大学已录取两位哈佛转校生", "突发，暴跌！特朗普：马斯克疯了",
-    "突发！全境拉响警报！", "随时可能发生大规模地震！我使馆，紧急提醒",
-    "马斯克表示愿意和特朗普和解", "全面决裂！刚刚特朗普整了个大活！",
-    "海棠作者被异地传唤：耽美作品涉罪的边界与争议", "张雪峰，走好",
-    "聊聊哈佛女被围攻这事折射出来的社会现实", "刘文超不幸离世，终年54岁",
-    "西子电梯发讣告：董事长不幸离世", "稳定币第一股，被疯抢",
-    "吵完架反悔了？马斯克改口", "马斯克曝猛料：特朗普的名字在爱泼斯坦档案中",
-    "特朗普政府发动史无前例报复", "重磅！中芯国际卖厂瘦身",
-    "凌晨重磅！果然爆了，熔断！", "彻底撕破脸，马斯克：特朗普应该被弹劾",
+    "三大运营商集体宣布AI战略", "教育部新规引发家长热议",
+    "央行数字货币最新进展", "新能源车企年度销量排行",
+    "医保改革最新政策解读", "房地产市场回暖信号明显",
+    "互联网大厂组织架构调整", "高考改革方案全面解析",
+    "5G-A商用进程加速", "芯片产业链国产替代突破",
+    "碳中和政策落地实施细则", "乡村振兴典型案例分析",
+    "食品安全新标准出台", "养老金制度改革方向",
+    "青年就业创业新政策", "文旅融合发展新模式",
+    "中医药现代化创新路径", "智慧城市建设新进展",
+    "双减政策执行效果评估", "绿色金融发展新机遇",
   ]
   return titles.map((title, i) => ({
-    rank: i + 1, title,
+    id: `gzh-${i + 1}`,
+    rank: i + 1,
+    title,
     hotValue: Math.max(100000 - i * 4000, 5000),
     url: `https://weixin.sogou.com/weixin?query=${encodeURIComponent(title)}`,
-    excerpt: `微信公众号热文 #${i + 1}`,
+    excerpt: `公众号24h热文 #${i + 1}`,
     imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
     authorName: "公众号热文",
     authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=1aad19`,
@@ -180,30 +169,26 @@ function getStaticFallback(): GzhHotItem[] {
 }
 
 export async function GET() {
-  if (cache && Date.now() - cache.ts < CACHE_TTL) {
-    return NextResponse.json(cache.data, {
-      headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
-    })
+  const now = Date.now()
+  if (cache && now - cache.ts < CACHE_TTL) {
+    return NextResponse.json(cache.data)
   }
 
-  let items: GzhHotItem[] | null = null
-  let source = "static"
+  let items: GzhHotItem[] = []
 
-  // Try 1: HTML Scraping
   try {
     items = await fetchFromHTML()
-    if (items && items.length > 0) source = "html"
+    console.log("[v0] GZH scraped items:", items.length)
   } catch (e) {
-    console.error("[GZH] HTML method failed:", e)
+    console.error("[v0] GZH scrape failed:", e)
   }
 
-  // Try 2: Static fallback
-  if (!items || items.length === 0) {
+  if (items.length === 0) {
     items = getStaticFallback()
-    source = "static"
+    console.log("[v0] GZH using static fallback")
   }
 
-  // Enrich ALL items in batches of 5 with real author/content data via Sogou
+  // Enrich with real author data in batches of 5
   const BATCH_SIZE = 5
   for (let start = 0; start < items.length; start += BATCH_SIZE) {
     const batch = items.slice(start, start + BATCH_SIZE)
@@ -214,30 +199,28 @@ export async function GET() {
       const idx = start + j
       const result = results[j]
       if (result.status === "fulfilled" && result.value) {
-        const data = result.value
-        if (data.excerpt) items[idx].excerpt = data.excerpt
-        if (data.detailContent) items[idx].detailContent = data.detailContent
-        if (data.imageUrl) {
-          items[idx].imageUrl = data.imageUrl
-          items[idx].mediaType = "image"
-        }
-        if (data.authorName) items[idx].authorName = data.authorName
-        if (data.authorAvatar) items[idx].authorAvatar = data.authorAvatar
+        const d = result.value
+        if (d.excerpt) items[idx].excerpt = d.excerpt
+        if (d.detailContent) items[idx].detailContent = d.detailContent
+        if (d.imageUrl) { items[idx].imageUrl = d.imageUrl; items[idx].mediaType = "image" }
+        if (d.authorName) items[idx].authorName = d.authorName
+        if (d.authorAvatar) items[idx].authorAvatar = d.authorAvatar
       }
     }
   }
 
-  // Debug: log sample item to verify field structure
+  // Debug
   if (items.length > 0) {
     const s = items[0]
-    console.log("[v0] GZH sample item:", JSON.stringify({ title: s.title, authorName: s.authorName, imageUrl: s.imageUrl?.substring(0, 60), mediaType: s.mediaType, hasDetail: !!s.detailContent }))
+    console.log("[v0] GZH sample:", JSON.stringify({
+      title: s.title, authorName: s.authorName,
+      imageUrl: s.imageUrl?.substring(0, 50),
+      mediaType: s.mediaType, hasDetail: !!s.detailContent,
+    }))
   }
 
-  cache = { data: items, ts: Date.now() }
+  cache = { data: items, ts: now }
   return NextResponse.json(items, {
-    headers: {
-      "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
-      "X-Data-Source": source,
-    },
+    headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120" },
   })
 }

@@ -294,6 +294,22 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const hasMedia = !!(displayImage || rawVideo) && imgFallbackLevel < 2
   const isDirectVideo = rawVideo ? /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(rawVideo) : false
 
+  // Debug: trace what data arrives at the card
+  console.log("[v0] NewsCard data:", {
+    id: item.id,
+    author: item.author,
+    avatar: item.authorAvatar?.substring(0, 40),
+    imageUrl: item.imageUrl?.substring(0, 60),
+    videoUrl: item.videoUrl?.substring(0, 60),
+    mediaType: item.mediaType,
+    detailContent: item.detailContent?.substring(0, 30),
+    displayImage: displayImage?.substring(0, 60),
+    rawImage: rawImage?.substring(0, 60),
+    hasMedia,
+    effectiveMediaType,
+    imgFallbackLevel,
+  })
+
   return (
     <article
       className={cn(

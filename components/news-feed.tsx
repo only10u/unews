@@ -205,6 +205,19 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
     if (res.ok) {
       const data = await res.json()
       if (Array.isArray(data) && data.length > 0) {
+        // Debug: log first item to verify API fields
+        if (data[0]) {
+          console.log(`[v0] ${platform} API raw item[0]:`, JSON.stringify({
+            authorName: data[0].authorName,
+            authorAvatar: data[0].authorAvatar?.substring(0, 40),
+            topAuthor: data[0].topAuthor,
+            imageUrl: data[0].imageUrl?.substring(0, 60),
+            videoUrl: data[0].videoUrl?.substring(0, 60),
+            mediaType: data[0].mediaType,
+            detailContent: data[0].detailContent?.substring(0, 30),
+            excerpt: data[0].excerpt?.substring(0, 30),
+          }))
+        }
         return data.map(
           (item: {
             rank?: number; title?: string; hotValue?: number; url?: string;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 
+// Weibo trending - v5 rebuilt from scratch
 interface WeiboHotItem {
   rank: number
   title: string
@@ -46,10 +47,9 @@ async function fetchTopPost(keyword: string): Promise<{
       `https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D${encodedQ}&page_type=searchall`,
       {
         headers: {
-          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
           Accept: "application/json",
           Referer: "https://m.weibo.cn/",
-          "X-Requested-With": "XMLHttpRequest",
         },
         signal: AbortSignal.timeout(5000),
       }
@@ -60,7 +60,7 @@ async function fetchTopPost(keyword: string): Promise<{
     const cards = json?.data?.cards || []
     for (const card of cards) {
       const mblog = card.card_type === 9 ? card.mblog
-        : card.card_type === 11 ? card.card_group?.find((s: { card_type: number; mblog?: unknown }) => s.card_type === 9)?.mblog
+        : card.card_type === 11 ? card.card_group?.find((s: { card_type: number }) => s.card_type === 9)?.mblog
         : null
       if (!mblog) continue
 
@@ -99,7 +99,7 @@ export async function GET() {
   try {
     const res = await fetch("https://weibo.com/ajax/side/hotSearch", {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
         Accept: "application/json",
         Referer: "https://weibo.com/",
       },
@@ -120,7 +120,7 @@ export async function GET() {
           hotValue: item.num || 0,
           url: `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`,
           category: item.category || item.label_name || undefined,
-          excerpt: `微博热搜"${title}"正在引发广泛讨论`,
+          excerpt: `微博热搜 "${title}" 引发广泛讨论`,
           imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
           authorName: "微博热搜",
           authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
@@ -128,60 +128,56 @@ export async function GET() {
       }
     )
 
-    // Enrich ALL items in batches of 5 with real author/content data
-    const BATCH_SIZE = 5
-    for (let start = 0; start < items.length; start += BATCH_SIZE) {
-      const batch = items.slice(start, start + BATCH_SIZE)
-      const results = await Promise.allSettled(
-        batch.map((item) => fetchTopPost(item.title))
-      )
+    // Enrich ALL items in parallel batches of 5
+    const BATCH = 5
+    for (let i = 0; i < items.length; i += BATCH) {
+      const batch = items.slice(i, i + BATCH)
+      const results = await Promise.allSettled(batch.map((it) => fetchTopPost(it.title)))
       for (let j = 0; j < results.length; j++) {
-        const idx = start + j
-        const result = results[j]
-        if (result.status === "fulfilled" && result.value) {
-          const data = result.value
-          if (data.excerpt) items[idx].excerpt = data.excerpt
-          if (data.detailContent) items[idx].detailContent = data.detailContent
-          if (data.imageUrl) items[idx].imageUrl = data.imageUrl
-          if (data.videoUrl) items[idx].videoUrl = data.videoUrl
-          if (data.mediaType) items[idx].mediaType = data.mediaType
-          if (data.authorName) items[idx].authorName = data.authorName
-          if (data.authorAvatar) items[idx].authorAvatar = data.authorAvatar
+        const r = results[j]
+        if (r.status === "fulfilled" && r.value) {
+          const d = r.value
+          const idx = i + j
+          if (d.excerpt) items[idx].excerpt = d.excerpt
+          if (d.detailContent) items[idx].detailContent = d.detailContent
+          if (d.imageUrl) items[idx].imageUrl = d.imageUrl
+          if (d.videoUrl) items[idx].videoUrl = d.videoUrl
+          if (d.mediaType) items[idx].mediaType = d.mediaType
+          if (d.authorName) items[idx].authorName = d.authorName
+          if (d.authorAvatar) items[idx].authorAvatar = d.authorAvatar
         }
       }
     }
 
-    // Debug: log sample to verify field structure
-    if (items.length > 0) {
-      const s = items[0]
-      console.log("[v0] Weibo sample:", JSON.stringify({ title: s.title, authorName: s.authorName, imageUrl: s.imageUrl?.substring(0, 60), mediaType: s.mediaType, hasDetail: !!s.detailContent }))
-    }
+    // Debug
+    console.log("[v0] Weibo items:", items.length, "sample:", JSON.stringify({
+      title: items[0]?.title, authorName: items[0]?.authorName,
+      img: items[0]?.imageUrl?.substring(0, 50), media: items[0]?.mediaType,
+    }))
 
     cache = { data: items, timestamp: now }
     return NextResponse.json(items)
   } catch (error) {
-    console.error("Weibo trending fetch failed:", error)
+    console.error("[v0] Weibo error:", error)
     if (cache) return NextResponse.json(cache.data)
-    return NextResponse.json(generateFallbackData(), { headers: { "X-Data-Source": "fallback" } })
+    return NextResponse.json(generateFallback())
   }
 }
 
-function generateFallbackData(): WeiboHotItem[] {
+function generateFallback(): WeiboHotItem[] {
   const topics = [
     "特朗普比特币储备计划", "以太坊ETF突破历史", "Solana生态大爆发",
     "BNB Chain新升级", "AI Agent代币暴涨", "链上巨鲸大额转账",
     "SEC加密监管新动向", "Meme币百倍神话", "DeFi TVL创新高",
     "NFT市场回暖", "Layer2生态格局", "稳定币市值突破2000亿",
     "加密行业裁员潮", "比特币减半效应", "Web3游戏爆款",
-    "空投季来临", "DAO治理新模式", "ZK技术突破",
-    "跨链桥安全事件", "加密税务新规"
   ]
   return topics.map((title, i) => ({
     rank: i + 1,
     title,
     hotValue: Math.floor(Math.random() * 10000000) + 500000,
     url: `https://s.weibo.com/weibo?q=%23${encodeURIComponent(title)}%23`,
-    excerpt: `微博热搜"${title}"持续发酵中，多位大V参与讨论。`,
+    excerpt: `微博热搜 "${title}" 持续发酵`,
     imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
     authorName: "微博热搜",
     authorAvatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(title.substring(0, 2))}&backgroundColor=e60012`,
