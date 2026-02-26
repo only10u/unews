@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-// TopHub 微信24h热文榜 - dual fallback: HTML scrape → static
+// TopHub 微信24h热文榜 - v3 rewritten with enrichment pipeline
 const TOPHUB_NODE = "WnBe01o371"
 const TOPHUB_HTML_URL = `https://tophub.today/n/${TOPHUB_NODE}`
 const TOPHUB_API_KEY = "53c76260b011e6384dbb7b9ebd8d3318"
@@ -225,6 +225,12 @@ export async function GET() {
         if (data.authorAvatar) items[idx].authorAvatar = data.authorAvatar
       }
     }
+  }
+
+  // Debug: log sample item to verify field structure
+  if (items.length > 0) {
+    const s = items[0]
+    console.log("[v0] GZH sample item:", JSON.stringify({ title: s.title, authorName: s.authorName, imageUrl: s.imageUrl?.substring(0, 60), mediaType: s.mediaType, hasDetail: !!s.detailContent }))
   }
 
   cache = { data: items, ts: Date.now() }

@@ -155,9 +155,9 @@ function trendingToNewsItems(
     const minutesAgo = Math.max(1, index * 2 + Math.floor(Math.random() * 3))
     const timestamp = minutesAgo <= 60 ? `${minutesAgo}分钟前` : `${Math.floor(minutesAgo / 60)}小时前`
 
-    // Use real enriched author data from API
-    const authorName = item.topAuthor || item.topAuthorAvatar ? (item.topAuthor || auth.name) : auth.name
-    const authorAvatar = item.topAuthorAvatar || auth.avatar
+    // Use real enriched author data from API (prefer API author over generic platform default)
+    const authorName = item.topAuthor ? item.topAuthor : auth.name
+    const authorAvatar = item.topAuthorAvatar ? item.topAuthorAvatar : auth.avatar
     const summary = item.excerpt
       || `${getPlatformLabel(platform === "gongzhonghao" ? "gongzhonghao" : platform)}热搜第${item.rank}名，热度值 ${formatHotValue(item.hotValue)}。${delta > 0 ? `15分钟内上升${delta}位。` : ""}`
 

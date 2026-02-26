@@ -151,6 +151,12 @@ export async function GET() {
       }
     }
 
+    // Debug: log sample to verify field structure
+    if (items.length > 0) {
+      const s = items[0]
+      console.log("[v0] Weibo sample:", JSON.stringify({ title: s.title, authorName: s.authorName, imageUrl: s.imageUrl?.substring(0, 60), mediaType: s.mediaType, hasDetail: !!s.detailContent }))
+    }
+
     cache = { data: items, timestamp: now }
     return NextResponse.json(items)
   } catch (error) {
