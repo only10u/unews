@@ -124,7 +124,13 @@ async function tryWeiboOfficial(): Promise<WeiboHotItem[] | null> {
       mediaType: "image" as const,
     }))
 
-    console.log("[WEIBO-API] source: weibo official, count:", items.length)
+    console.log("[WEIBO-API] source: weibo official, count:", items.length, 
+      "sample:", JSON.stringify({
+        title: items[0]?.title,
+        imageUrl: items[0]?.imageUrl,
+        authorName: items[0]?.authorName,
+        authorAvatar: items[0]?.authorAvatar,
+      }))
     return items
   } catch (e) {
     console.log("[WEIBO-API] weibo official failed:", e instanceof Error ? e.message : String(e))
