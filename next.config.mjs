@@ -1,11 +1,21 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v8 - FETCH-V3 话题页og:image + TopHub
+// Force redeploy: v9 - no-referrer policy for anti-hotlink bypass
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
   images: {
     unoptimized: true,
+  },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+      },
+    ]
   },
 }
 
