@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v10 - public aggregator APIs only (vvhan + tenapi)
+// Force redeploy: v11 - more APIs (tophub + 60s + oioweb)
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

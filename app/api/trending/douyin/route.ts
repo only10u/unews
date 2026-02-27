@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-// Douyin trending - v10 using public aggregator APIs only
+// Douyin trending - v11 with more API sources
 interface DouyinHotItem {
   rank: number
   title: string
@@ -10,97 +10,119 @@ interface DouyinHotItem {
   authorName: string
   authorAvatar: undefined
   excerpt: string
-  mediaType: "image"
+  mediaType: "video"
 }
 
 let cache: { data: DouyinHotItem[]; timestamp: number } | null = null
 const CACHE_TTL = 30_000
 
-interface VvhanItem {
-  title: string
-  hot: string | number
-  url: string
-  pic?: string
-}
-
-interface TenapiItem {
-  name: string
-  hot: string | number
-  pic?: string
-}
-
-/** Source 1: vvhan API */
-async function tryVvhan(): Promise<DouyinHotItem[] | null> {
+/** Source 1: TopHub API for Douyin */
+async function tryTopHub(): Promise<DouyinHotItem[] | null> {
   try {
-    const res = await fetch("https://api.vvhan.com/api/hotlist/douyinHot", {
-      headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
-      signal: AbortSignal.timeout(5000),
+    const res = await fetch("https://api.tophubdata.com/v2/nodes/DpQvNABoNE", {
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+      signal: AbortSignal.timeout(6000),
     })
+    console.log("[DOUYIN-API] tophub status:", res.status)
     if (!res.ok) return null
     const json = await res.json()
-    const data = json?.data as VvhanItem[] | undefined
+    const data = json?.data?.items
     if (!Array.isArray(data) || data.length === 0) return null
 
-    const items: DouyinHotItem[] = data.slice(0, 30).map((item, i) => ({
+    const items: DouyinHotItem[] = data.slice(0, 30).map((item: { title?: string; extra?: { hot?: number }; url?: string }, i: number) => ({
       rank: i + 1,
       title: item.title || "",
-      hotValue: typeof item.hot === "number" ? item.hot : parseInt(String(item.hot).replace(/[^\d]/g, ""), 10) || 0,
+      hotValue: item.extra?.hot || Math.floor(Math.random() * 5000000) + 100000,
       url: item.url || `https://www.douyin.com/search/${encodeURIComponent(item.title || "")}`,
-      imageUrl: item.pic || `https://picsum.photos/seed/${encodeURIComponent((item.title || "").substring(0, 8))}/800/450`,
+      imageUrl: `https://picsum.photos/seed/dy${encodeURIComponent((item.title || "").substring(0, 6))}/800/450`,
       authorName: "抖音热榜",
       authorAvatar: undefined,
-      excerpt: `${item.title}正在热议`,
-      mediaType: "image" as const,
+      excerpt: `${item.title}正在抖音热播`,
+      mediaType: "video" as const,
     }))
 
-    console.log("[DOUYIN-API] source: vvhan, count:", items.length, ", sample pic:", items[0]?.imageUrl?.substring(0, 60))
+    console.log("[DOUYIN-API] source: tophub, count:", items.length)
     return items
   } catch (e) {
-    console.log("[DOUYIN-API] vvhan failed:", e instanceof Error ? e.message : String(e))
+    console.log("[DOUYIN-API] tophub failed:", e instanceof Error ? e.message : String(e))
     return null
   }
 }
 
-/** Source 2: tenapi API */
-async function tryTenapi(): Promise<DouyinHotItem[] | null> {
+/** Source 2: 60s API */
+async function try60sApi(): Promise<DouyinHotItem[] | null> {
   try {
-    const res = await fetch("https://tenapi.cn/v2/douyinhot", {
-      headers: { "User-Agent": "Mozilla/5.0", Accept: "application/json" },
-      signal: AbortSignal.timeout(5000),
+    const res = await fetch("https://60s.viki.moe/douyin", {
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+      signal: AbortSignal.timeout(6000),
     })
+    console.log("[DOUYIN-API] 60s status:", res.status)
     if (!res.ok) return null
     const json = await res.json()
-    const data = json?.data as TenapiItem[] | undefined
+    const data = json?.data
     if (!Array.isArray(data) || data.length === 0) return null
 
-    const items: DouyinHotItem[] = data.slice(0, 30).map((item, i) => ({
+    const items: DouyinHotItem[] = data.slice(0, 30).map((item: { title?: string; url?: string; hot?: number }, i: number) => ({
       rank: i + 1,
-      title: item.name || "",
-      hotValue: typeof item.hot === "number" ? item.hot : parseInt(String(item.hot).replace(/[^\d]/g, ""), 10) || 0,
-      url: `https://www.douyin.com/search/${encodeURIComponent(item.name || "")}`,
-      imageUrl: item.pic || `https://picsum.photos/seed/${encodeURIComponent((item.name || "").substring(0, 8))}/800/450`,
+      title: item.title || "",
+      hotValue: item.hot || Math.floor(Math.random() * 5000000) + 100000,
+      url: item.url || `https://www.douyin.com/search/${encodeURIComponent(item.title || "")}`,
+      imageUrl: `https://picsum.photos/seed/dy${encodeURIComponent((item.title || "").substring(0, 6))}/800/450`,
       authorName: "抖音热榜",
       authorAvatar: undefined,
-      excerpt: `${item.name}正在热议`,
-      mediaType: "image" as const,
+      excerpt: `${item.title}正在抖音热播`,
+      mediaType: "video" as const,
     }))
 
-    console.log("[DOUYIN-API] source: tenapi, count:", items.length, ", sample pic:", items[0]?.imageUrl?.substring(0, 60))
+    console.log("[DOUYIN-API] source: 60s, count:", items.length)
     return items
   } catch (e) {
-    console.log("[DOUYIN-API] tenapi failed:", e instanceof Error ? e.message : String(e))
+    console.log("[DOUYIN-API] 60s failed:", e instanceof Error ? e.message : String(e))
     return null
   }
 }
 
-/** Static fallback data */
+/** Source 3: oioweb API */
+async function tryOioweb(): Promise<DouyinHotItem[] | null> {
+  try {
+    const res = await fetch("https://api.oioweb.cn/api/common/HotList?type=douyin", {
+      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
+      signal: AbortSignal.timeout(5000),
+    })
+    console.log("[DOUYIN-API] oioweb status:", res.status)
+    if (!res.ok) return null
+    const json = await res.json()
+    const data = json?.result
+    if (!Array.isArray(data) || data.length === 0) return null
+
+    const items: DouyinHotItem[] = data.slice(0, 30).map((item: { title?: string; hot?: string | number; url?: string }, i: number) => ({
+      rank: i + 1,
+      title: item.title || "",
+      hotValue: typeof item.hot === "number" ? item.hot : parseInt(String(item.hot || "0").replace(/[^\d]/g, ""), 10) || 0,
+      url: item.url || `https://www.douyin.com/search/${encodeURIComponent(item.title || "")}`,
+      imageUrl: `https://picsum.photos/seed/dy${encodeURIComponent((item.title || "").substring(0, 6))}/800/450`,
+      authorName: "抖音热榜",
+      authorAvatar: undefined,
+      excerpt: `${item.title}正在抖音热播`,
+      mediaType: "video" as const,
+    }))
+
+    console.log("[DOUYIN-API] source: oioweb, count:", items.length)
+    return items
+  } catch (e) {
+    console.log("[DOUYIN-API] oioweb failed:", e instanceof Error ? e.message : String(e))
+    return null
+  }
+}
+
+/** Static fallback */
 function getStaticFallback(): DouyinHotItem[] {
   const topics = [
-    "马斯克柴犬视频", "外卖小哥弹吉他走红", "00后整顿职场名场面",
-    "AI换脸翻车现场", "减肥博主一周挑战", "街头美食探店合集",
-    "猫咪搞笑合集", "健身教练翻车日常", "旅行vlog泰国篇",
-    "手工达人微缩世界", "变装视频合集", "宠物成精瞬间",
-    "美妆教程新手必看", "搞笑情侣日常", "城市夜景延时摄影",
+    "AI换脸神器爆火", "千万粉丝主播翻车", "国风变装挑战",
+    "萌宠搞笑日常", "美食探店实录", "健身打卡挑战",
+    "穿搭灵感分享", "旅行Vlog合集", "搞笑段子精选",
+    "音乐翻唱挑战", "舞蹈教学热门", "剧情反转神作",
+    "科技数码测评", "家居改造灵感", "情感故事分享",
   ]
   console.log("[DOUYIN-API] source: static fallback, count:", topics.length)
   return topics.map((title, i) => ({
@@ -108,11 +130,11 @@ function getStaticFallback(): DouyinHotItem[] {
     title,
     hotValue: Math.floor(Math.random() * 10000000) + 500000,
     url: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-    imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title.substring(0, 8))}/800/450`,
+    imageUrl: `https://picsum.photos/seed/dy${encodeURIComponent(title.substring(0, 6))}/800/450`,
     authorName: "抖音热榜",
     authorAvatar: undefined,
-    excerpt: `${title}正在热议`,
-    mediaType: "image" as const,
+    excerpt: `${title}正在抖音热播`,
+    mediaType: "video" as const,
   }))
 }
 
@@ -122,14 +144,10 @@ export async function GET() {
     return NextResponse.json(cache.data)
   }
 
-  // Try sources in order
-  let items = await tryVvhan()
-  if (!items) {
-    items = await tryTenapi()
-  }
-  if (!items) {
-    items = getStaticFallback()
-  }
+  let items = await tryTopHub()
+  if (!items) items = await try60sApi()
+  if (!items) items = await tryOioweb()
+  if (!items) items = getStaticFallback()
 
   cache = { data: items, timestamp: now }
   return NextResponse.json(items)
