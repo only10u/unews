@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v12 - add sample log for weibo official
+// Force redeploy: v13 - R2 image transfer system
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
