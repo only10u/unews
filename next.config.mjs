@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v12 - add sample log for weibo official
+// Force redeploy: v17 - detailed enrichment debug logs
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
