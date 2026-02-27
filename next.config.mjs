@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v16 - real image enrichment + R2 transfer
+// Force redeploy: v17 - detailed enrichment debug logs
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

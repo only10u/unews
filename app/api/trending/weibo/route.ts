@@ -25,49 +25,64 @@ const DELAY_MS = 500
  * Enrichment: Fetch real image from s.weibo.com search page
  */
 async function enrichWeiboImage(keyword: string): Promise<string | null> {
+  const kw = keyword.substring(0, 12)
   try {
     const url = `https://s.weibo.com/weibo?q=${encodeURIComponent(keyword)}&Refer=top`
+    console.log("[WEIBO-ENRICH] requesting:", url.substring(0, 80))
+    
     const res = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Referer": "https://weibo.com/",
+        "Cookie": "", // No cookie needed for search
       },
       signal: AbortSignal.timeout(8000),
+      redirect: "follow",
     })
     
+    console.log("[WEIBO-ENRICH] response:", res.status, res.statusText, "url:", res.url?.substring(0, 50), "kw:", kw)
+    
     if (!res.ok) {
-      console.log("[WEIBO-ENRICH] fetch failed:", res.status, "for:", keyword.substring(0, 10))
       return null
     }
     
     const html = await res.text()
+    const htmlLen = html.length
+    const hasLogin = html.includes("passport.weibo.com") || html.includes("登录")
+    const hasCaptcha = html.includes("验证码") || html.includes("captcha")
+    
+    console.log("[WEIBO-ENRICH] html len:", htmlLen, "hasLogin:", hasLogin, "hasCaptcha:", hasCaptcha, "kw:", kw)
+    
+    // Check if redirected to login page
+    if (hasLogin || hasCaptcha || htmlLen < 5000) {
+      console.log("[WEIBO-ENRICH] blocked - login/captcha required, kw:", kw)
+      return null
+    }
     
     // Extract sinaimg.cn image URLs from the HTML
-    // Pattern: src="//wx1.sinaimg.cn/..." or src="https://wx1.sinaimg.cn/..."
     const imgMatches = html.match(/(?:src=["'])((?:https?:)?\/\/[^"']*sinaimg\.cn[^"']*(?:\.jpg|\.png|\.gif|\.webp)[^"']*)/gi)
     
+    console.log("[WEIBO-ENRICH] sinaimg matches:", imgMatches?.length || 0, "kw:", kw)
+    
     if (imgMatches && imgMatches.length > 0) {
-      // Extract URL from the first match
       const match = imgMatches[0].match(/(?:src=["'])((?:https?:)?\/\/[^"']+)/i)
       if (match && match[1]) {
         let imageUrl = match[1]
-        // Ensure https protocol
         if (imageUrl.startsWith("//")) {
           imageUrl = "https:" + imageUrl
         }
-        // Convert thumbnail to larger size
         imageUrl = imageUrl.replace(/\/thumb\d+\//, "/mw690/").replace(/\/orj\d+\//, "/mw690/")
-        console.log("[WEIBO-ENRICH] found image:", imageUrl.substring(0, 60), "for:", keyword.substring(0, 10))
+        console.log("[WEIBO-ENRICH] SUCCESS image:", imageUrl.substring(0, 70), "kw:", kw)
         return imageUrl
       }
     }
     
-    console.log("[WEIBO-ENRICH] no sinaimg found in HTML for:", keyword.substring(0, 10))
+    console.log("[WEIBO-ENRICH] no sinaimg found, kw:", kw)
     return null
   } catch (e) {
-    console.log("[WEIBO-ENRICH] exception:", e instanceof Error ? e.message : String(e), "for:", keyword.substring(0, 10))
+    console.log("[WEIBO-ENRICH] EXCEPTION:", e instanceof Error ? e.message : String(e), "kw:", kw)
     return null
   }
 }
@@ -134,7 +149,18 @@ async function tryWeiboOfficial(): Promise<WeiboHotItem[] | null> {
     const realtime = json?.data?.realtime
     if (!Array.isArray(realtime) || realtime.length === 0) return null
 
-    const items: WeiboHotItem[] = realtime.slice(0, 20).map((item: { word?: string; num?: number; raw_hot?: number }, i: number) => ({
+    // Log first item's fields to check for image data
+    const firstItem = realtime[0]
+    console.log("[WEIBO-API] first item fields:", JSON.stringify({
+      word: firstItem?.word?.substring(0, 15),
+      pic_url: firstItem?.pic_url,
+      icon: firstItem?.icon,
+      icon_desc: firstItem?.icon_desc,
+      icon_desc_color: firstItem?.icon_desc_color,
+      allKeys: Object.keys(firstItem || {}),
+    }))
+
+    const items: WeiboHotItem[] = realtime.slice(0, 20).map((item: { word?: string; num?: number; raw_hot?: number; icon?: string }, i: number) => ({
       rank: i + 1,
       title: item.word || "",
       hotValue: item.num || item.raw_hot || 0,
