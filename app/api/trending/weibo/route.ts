@@ -200,6 +200,10 @@ function getStaticFallback(): WeiboHotItem[] {
  * Returns items with R2 URLs or original URLs on failure
  */
 async function transferImagesToR2(items: WeiboHotItem[]): Promise<WeiboHotItem[]> {
+  // Debug: confirm function is called
+  const protectedCount = items.filter(it => /sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com/i.test(it.imageUrl || "")).length
+  console.log("[WEIBO-R2] transferImagesToR2 called, total:", items.length, "protected:", protectedCount, "sample URL:", items[0]?.imageUrl?.substring(0, 60))
+  
   const results = await Promise.allSettled(
     items.map(async (item) => {
       const platform = detectPlatform(item.imageUrl)

@@ -146,6 +146,9 @@ function getStaticFallback(): GzhHotItem[] {
  * Transfer images to R2 if they are from protected domains
  */
 async function transferImagesToR2(items: GzhHotItem[]): Promise<GzhHotItem[]> {
+  const protectedCount = items.filter(it => /sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com/i.test(it.imageUrl || "")).length
+  console.log("[GZH-R2] transferImagesToR2 called, total:", items.length, "protected:", protectedCount, "sample URL:", items[0]?.imageUrl?.substring(0, 60))
+  
   const results = await Promise.allSettled(
     items.map(async (item) => {
       const platform = detectPlatform(item.imageUrl)
