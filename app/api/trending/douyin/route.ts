@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { transferImage, detectPlatform } from "@/lib/r2"
 
-// Douyin trending - v16 with real video cover enrichment
+// Douyin trending - v18 with IES API + Bing image fallback
 interface DouyinHotItem {
   rank: number
   title: string
@@ -15,125 +15,104 @@ interface DouyinHotItem {
 }
 
 let cache: { data: DouyinHotItem[]; timestamp: number } | null = null
-const CACHE_TTL = 60_000
-
-const MAX_CONCURRENT = 3
-const DELAY_MS = 500
+const CACHE_TTL = 120_000
 
 /**
- * Enrichment: Fetch video cover from Douyin API
+ * Fetch cover image from Bing Image Search
  */
-async function enrichDouyinImage(keyword: string): Promise<{ imageUrl?: string; authorName?: string } | null> {
+async function fetchBingImage(keyword: string): Promise<string | null> {
   try {
-    // Try Douyin search API
-    const url = `https://www.douyin.com/aweme/v1/web/hot/search/list/`
+    const query = encodeURIComponent(keyword + " 抖音")
+    const url = `https://cn.bing.com/images/search?q=${query}&first=1&count=1`
+    
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1",
-        "Accept": "application/json",
-        "Referer": "https://www.douyin.com/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "text/html",
+        "Accept-Language": "zh-CN,zh;q=0.9",
       },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     })
     
-    if (!res.ok) {
-      console.log("[DOUYIN-ENRICH] API failed:", res.status)
-      return null
+    if (!res.ok) return null
+    
+    const html = await res.text()
+    const murlMatch = html.match(/"murl":"(https?:[^"]+)"/i)
+    if (murlMatch && murlMatch[1]) {
+      return murlMatch[1].replace(/\\u002f/g, "/")
     }
-    
-    const json = await res.json()
-    const list = json?.data?.word_list || json?.word_list || []
-    
-    // Find matching item
-    const match = list.find((item: { word?: string }) => 
-      item.word?.includes(keyword.substring(0, 4)) || keyword.includes(item.word?.substring(0, 4) || "")
-    )
-    
-    if (match?.cover) {
-      let coverUrl = match.cover
-      if (coverUrl.startsWith("//")) coverUrl = "https:" + coverUrl
-      console.log("[DOUYIN-ENRICH] found cover:", coverUrl.substring(0, 50))
-      return { imageUrl: coverUrl }
-    }
-    
     return null
-  } catch (e) {
-    console.log("[DOUYIN-ENRICH] exception:", e instanceof Error ? e.message : String(e))
+  } catch {
     return null
   }
 }
 
 /**
- * Batch enrichment with concurrency control
+ * Enrich items with Bing images
  */
-async function enrichItemsWithImages(items: DouyinHotItem[]): Promise<DouyinHotItem[]> {
-  console.log("[DOUYIN-ENRICH] starting enrichment for", items.length, "items")
+async function enrichWithBingImages(items: DouyinHotItem[]): Promise<DouyinHotItem[]> {
+  console.log("[DOUYIN-BING] enriching", items.length, "items")
   
-  const results: DouyinHotItem[] = [...items]
+  const toEnrich = items.slice(0, 10)
+  const results = await Promise.allSettled(
+    toEnrich.map(async (item, idx) => {
+      await new Promise(r => setTimeout(r, idx * 200))
+      return fetchBingImage(item.title)
+    })
+  )
   
-  for (let i = 0; i < Math.min(items.length, 10); i += MAX_CONCURRENT) {
-    const batch = items.slice(i, i + MAX_CONCURRENT)
-    const batchResults = await Promise.allSettled(
-      batch.map(async (item, idx) => {
-        if (idx > 0) await new Promise(resolve => setTimeout(resolve, DELAY_MS))
-        return enrichDouyinImage(item.title)
-      })
-    )
-    
-    for (let j = 0; j < batchResults.length; j++) {
-      const result = batchResults[j]
-      if (result.status === "fulfilled" && result.value?.imageUrl) {
-        results[i + j] = { ...results[i + j], imageUrl: result.value.imageUrl }
+  const enriched = items.map((item, i) => {
+    if (i < results.length) {
+      const result = results[i]
+      if (result.status === "fulfilled" && result.value) {
+        return { ...item, imageUrl: result.value }
       }
     }
-    
-    if (i + MAX_CONCURRENT < items.length) {
-      await new Promise(resolve => setTimeout(resolve, DELAY_MS))
-    }
-  }
+    return item
+  })
   
-  return results
+  const count = enriched.filter((item, i) => item.imageUrl !== items[i].imageUrl).length
+  console.log("[DOUYIN-BING] enriched:", count)
+  
+  return enriched
 }
 
-/** Source 1: Douyin official hot list API */
-async function tryDouyinOfficial(): Promise<DouyinHotItem[] | null> {
+/** Source 1: IES Douyin API (no login required) */
+async function tryIesDouyin(): Promise<DouyinHotItem[] | null> {
   try {
-    const res = await fetch("https://www.douyin.com/aweme/v1/web/hot/search/list/", {
+    const res = await fetch("https://www.iesdouyin.com/web/api/v2/hotsearch/billboard/word/", {
       headers: {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15",
         "Accept": "application/json",
-        "Referer": "https://www.douyin.com/",
       },
       signal: AbortSignal.timeout(6000),
     })
-    console.log("[DOUYIN-API] official status:", res.status)
+    console.log("[DOUYIN-API] IES status:", res.status)
     if (!res.ok) return null
     
     const json = await res.json()
-    const list = json?.data?.word_list || json?.word_list || []
-    if (!Array.isArray(list) || list.length === 0) return null
+    const list = json?.word_list || []
+    if (!Array.isArray(list) || list.length === 0) {
+      console.log("[DOUYIN-API] IES empty list")
+      return null
+    }
 
-    const items: DouyinHotItem[] = list.slice(0, 20).map((item: { word?: string; hot_value?: number; cover?: string }, i: number) => {
-      let coverUrl = item.cover || ""
-      if (coverUrl.startsWith("//")) coverUrl = "https:" + coverUrl
-      
-      return {
-        rank: i + 1,
-        title: item.word || "",
-        hotValue: item.hot_value || 0,
-        url: `https://www.douyin.com/search/${encodeURIComponent(item.word || "")}`,
-        imageUrl: coverUrl || `https://picsum.photos/seed/dy${i}/800/450`,
-        authorName: "抖音热榜",
-        authorAvatar: undefined,
-        excerpt: `#${item.word}# 正在抖音热播`,
-        mediaType: "video" as const,
-      }
-    })
+    const items: DouyinHotItem[] = list.slice(0, 20).map((item: { word?: string; hot_value?: number }, i: number) => ({
+      rank: i + 1,
+      title: item.word || "",
+      hotValue: item.hot_value || 0,
+      url: `https://www.douyin.com/search/${encodeURIComponent(item.word || "")}`,
+      imageUrl: `https://picsum.photos/seed/dy${encodeURIComponent((item.word || "").substring(0, 6))}/800/450`,
+      authorName: "抖音热榜",
+      authorAvatar: undefined,
+      excerpt: `#${item.word}# 正在抖音热播`,
+      mediaType: "video" as const,
+    }))
 
-    console.log("[DOUYIN-API] source: douyin official, count:", items.length, "with covers:", items.filter(i => i.imageUrl.includes("douyinpic")).length)
+    console.log("[DOUYIN-API] source: IES, count:", items.length)
     return items
   } catch (e) {
-    console.log("[DOUYIN-API] official failed:", e instanceof Error ? e.message : String(e))
+    console.log("[DOUYIN-API] IES failed:", e instanceof Error ? e.message : String(e))
     return null
   }
 }
@@ -143,7 +122,7 @@ async function try60sApi(): Promise<DouyinHotItem[] | null> {
   try {
     const res = await fetch("https://60s.viki.moe/douyin", {
       headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     })
     console.log("[DOUYIN-API] 60s status:", res.status)
     if (!res.ok) return null
@@ -171,41 +150,27 @@ async function try60sApi(): Promise<DouyinHotItem[] | null> {
   }
 }
 
-/** Static fallback */
-function getStaticFallback(): DouyinHotItem[] {
-  const topics = ["抖音热门话题1", "抖音热门话题2", "抖音热门话题3"]
-  console.log("[DOUYIN-API] source: static fallback")
-  return topics.map((title, i) => ({
-    rank: i + 1,
-    title,
-    hotValue: 1000000,
-    url: `https://www.douyin.com/search/${encodeURIComponent(title)}`,
-    imageUrl: `https://picsum.photos/seed/dy${i}/800/450`,
-    authorName: "抖音热榜",
-    authorAvatar: undefined,
-    excerpt: `${title}正在热播`,
-    mediaType: "video" as const,
-  }))
+/** Empty fallback - show "no data" instead of fake data */
+function getEmptyFallback(): DouyinHotItem[] {
+  console.log("[DOUYIN-API] source: empty fallback")
+  return []
 }
 
 /**
- * Transfer images to R2 if they are from protected domains
+ * Transfer protected images to R2
  */
 async function transferImagesToR2(items: DouyinHotItem[]): Promise<DouyinHotItem[]> {
-  const protectedItems = items.filter(it => /douyinpic\.com|bytedance/i.test(it.imageUrl || ""))
-  console.log("[DOUYIN-R2] items to transfer:", protectedItems.length, "of", items.length)
+  const protectedItems = items.filter(it => detectPlatform(it.imageUrl) !== "unknown")
+  console.log("[DOUYIN-R2] protected items:", protectedItems.length)
   
   if (protectedItems.length === 0) return items
   
   const results = await Promise.allSettled(
     items.map(async (item) => {
-      const platform = detectPlatform(item.imageUrl)
-      if (platform === "unknown") return item
-      
+      if (detectPlatform(item.imageUrl) === "unknown") return item
       try {
         const result = await transferImage(item.imageUrl)
         if (result.proxied) {
-          console.log("[DOUYIN-R2] transferred:", item.imageUrl.substring(0, 40))
           return { ...item, imageUrl: result.proxied }
         }
         return item
@@ -224,18 +189,14 @@ export async function GET() {
     return NextResponse.json(cache.data)
   }
 
-  let items = await tryDouyinOfficial()
-  if (!items) items = await try60sApi()
-  if (!items) items = getStaticFallback()
+  let items = await tryIesDouyin()
+  if (!items || items.length === 0) items = await try60sApi()
+  if (!items || items.length === 0) items = getEmptyFallback()
 
-  // Enrich items without covers
-  const needsEnrichment = items.filter(i => !i.imageUrl.includes("douyinpic")).length > items.length / 2
-  if (needsEnrichment) {
-    items = await enrichItemsWithImages(items)
+  if (items.length > 0) {
+    items = await enrichWithBingImages(items)
+    items = await transferImagesToR2(items)
   }
-  
-  // Transfer protected images to R2
-  items = await transferImagesToR2(items)
 
   cache = { data: items, timestamp: now }
   return NextResponse.json(items)

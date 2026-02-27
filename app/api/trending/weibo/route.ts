@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { transferImage, detectPlatform } from "@/lib/r2"
 
-// Weibo trending - v16 with real image enrichment
+// Weibo trending - v18 with Bing image search for cover images
 interface WeiboHotItem {
   rank: number
   title: string
@@ -15,120 +15,89 @@ interface WeiboHotItem {
 }
 
 let cache: { data: WeiboHotItem[]; timestamp: number } | null = null
-const CACHE_TTL = 60_000 // 1 minute cache to reduce enrichment load
-
-// Concurrency control
-const MAX_CONCURRENT = 3
-const DELAY_MS = 500
+const CACHE_TTL = 120_000 // 2 minutes
 
 /**
- * Enrichment: Fetch real image from s.weibo.com search page
+ * Fetch cover image from Bing Image Search (accessible from overseas)
  */
-async function enrichWeiboImage(keyword: string): Promise<string | null> {
-  const kw = keyword.substring(0, 12)
+async function fetchBingImage(keyword: string): Promise<string | null> {
   try {
-    const url = `https://s.weibo.com/weibo?q=${encodeURIComponent(keyword)}&Refer=top`
-    console.log("[WEIBO-ENRICH] requesting:", url.substring(0, 80))
+    const query = encodeURIComponent(keyword + " 新闻")
+    const url = `https://cn.bing.com/images/search?q=${query}&first=1&count=1&safeSearch=Moderate`
     
     const res = await fetch(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-        "Referer": "https://weibo.com/",
-        "Cookie": "", // No cookie needed for search
+        "Accept": "text/html,application/xhtml+xml",
+        "Accept-Language": "zh-CN,zh;q=0.9",
       },
-      signal: AbortSignal.timeout(8000),
-      redirect: "follow",
+      signal: AbortSignal.timeout(5000),
     })
     
-    console.log("[WEIBO-ENRICH] response:", res.status, res.statusText, "url:", res.url?.substring(0, 50), "kw:", kw)
-    
     if (!res.ok) {
+      console.log("[WEIBO-BING] status:", res.status, "kw:", keyword.substring(0, 10))
       return null
     }
     
     const html = await res.text()
-    const htmlLen = html.length
-    const hasLogin = html.includes("passport.weibo.com") || html.includes("登录")
-    const hasCaptcha = html.includes("验证码") || html.includes("captcha")
     
-    console.log("[WEIBO-ENRICH] html len:", htmlLen, "hasLogin:", hasLogin, "hasCaptcha:", hasCaptcha, "kw:", kw)
-    
-    // Check if redirected to login page
-    if (hasLogin || hasCaptcha || htmlLen < 5000) {
-      console.log("[WEIBO-ENRICH] blocked - login/captcha required, kw:", kw)
-      return null
+    // Extract murl (media URL) from Bing image results
+    // Pattern: "murl":"https://..."
+    const murlMatch = html.match(/"murl":"(https?:[^"]+)"/i)
+    if (murlMatch && murlMatch[1]) {
+      const imageUrl = murlMatch[1].replace(/\\u002f/g, "/")
+      console.log("[WEIBO-BING] found image:", imageUrl.substring(0, 60), "kw:", keyword.substring(0, 10))
+      return imageUrl
     }
     
-    // Extract sinaimg.cn image URLs from the HTML
-    const imgMatches = html.match(/(?:src=["'])((?:https?:)?\/\/[^"']*sinaimg\.cn[^"']*(?:\.jpg|\.png|\.gif|\.webp)[^"']*)/gi)
-    
-    console.log("[WEIBO-ENRICH] sinaimg matches:", imgMatches?.length || 0, "kw:", kw)
-    
-    if (imgMatches && imgMatches.length > 0) {
-      const match = imgMatches[0].match(/(?:src=["'])((?:https?:)?\/\/[^"']+)/i)
-      if (match && match[1]) {
-        let imageUrl = match[1]
-        if (imageUrl.startsWith("//")) {
-          imageUrl = "https:" + imageUrl
-        }
-        imageUrl = imageUrl.replace(/\/thumb\d+\//, "/mw690/").replace(/\/orj\d+\//, "/mw690/")
-        console.log("[WEIBO-ENRICH] SUCCESS image:", imageUrl.substring(0, 70), "kw:", kw)
-        return imageUrl
-      }
+    // Fallback: try to find any image URL
+    const imgMatch = html.match(/src2="(https?:[^"]+(?:\.jpg|\.png|\.webp)[^"]*)"/i)
+    if (imgMatch && imgMatch[1]) {
+      console.log("[WEIBO-BING] found src2 image:", imgMatch[1].substring(0, 60))
+      return imgMatch[1]
     }
     
-    console.log("[WEIBO-ENRICH] no sinaimg found, kw:", kw)
+    console.log("[WEIBO-BING] no image found for:", keyword.substring(0, 10))
     return null
   } catch (e) {
-    console.log("[WEIBO-ENRICH] EXCEPTION:", e instanceof Error ? e.message : String(e), "kw:", kw)
+    console.log("[WEIBO-BING] exception:", e instanceof Error ? e.message : String(e))
     return null
   }
 }
 
 /**
- * Batch enrichment with concurrency control
+ * Enrich items with Bing images (batch processing)
  */
-async function enrichItemsWithImages(items: WeiboHotItem[]): Promise<WeiboHotItem[]> {
-  console.log("[WEIBO-ENRICH] starting enrichment for", items.length, "items")
+async function enrichWithBingImages(items: WeiboHotItem[]): Promise<WeiboHotItem[]> {
+  console.log("[WEIBO-BING] starting enrichment for", items.length, "items")
   
-  const results: WeiboHotItem[] = [...items]
+  // Process first 10 items only to stay within time limits
+  const toEnrich = items.slice(0, 10)
+  const results = await Promise.allSettled(
+    toEnrich.map(async (item, idx) => {
+      // Stagger requests
+      await new Promise(r => setTimeout(r, idx * 200))
+      return fetchBingImage(item.title)
+    })
+  )
   
-  // Process in batches of MAX_CONCURRENT
-  for (let i = 0; i < items.length; i += MAX_CONCURRENT) {
-    const batch = items.slice(i, i + MAX_CONCURRENT)
-    const batchResults = await Promise.allSettled(
-      batch.map(async (item, idx) => {
-        // Add delay to avoid rate limiting
-        if (idx > 0) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_MS))
-        }
-        return enrichWeiboImage(item.title)
-      })
-    )
-    
-    // Update results with enriched images
-    for (let j = 0; j < batchResults.length; j++) {
-      const result = batchResults[j]
+  const enriched = items.map((item, i) => {
+    if (i < results.length) {
+      const result = results[i]
       if (result.status === "fulfilled" && result.value) {
-        results[i + j] = { ...results[i + j], imageUrl: result.value }
+        return { ...item, imageUrl: result.value }
       }
     }
-    
-    // Add delay between batches
-    if (i + MAX_CONCURRENT < items.length) {
-      await new Promise(resolve => setTimeout(resolve, DELAY_MS))
-    }
-  }
+    return item
+  })
   
-  const enrichedCount = results.filter((item, idx) => item.imageUrl !== items[idx].imageUrl).length
-  console.log("[WEIBO-ENRICH] enrichment complete, enriched:", enrichedCount, "of", items.length)
+  const enrichedCount = enriched.filter((item, i) => item.imageUrl !== items[i].imageUrl).length
+  console.log("[WEIBO-BING] enriched:", enrichedCount, "of", Math.min(10, items.length))
   
-  return results
+  return enriched
 }
 
-/** Source 1: Weibo official API (most reliable) */
+/** Source 1: Weibo official API */
 async function tryWeiboOfficial(): Promise<WeiboHotItem[] | null> {
   try {
     const res = await fetch("https://weibo.com/ajax/side/hotSearch", {
@@ -139,7 +108,7 @@ async function tryWeiboOfficial(): Promise<WeiboHotItem[] | null> {
       },
       signal: AbortSignal.timeout(5000),
     })
-    console.log("[WEIBO-API] weibo official status:", res.status)
+    console.log("[WEIBO-API] official status:", res.status)
     if (!res.ok) return null
     
     const text = await res.text()
@@ -149,33 +118,22 @@ async function tryWeiboOfficial(): Promise<WeiboHotItem[] | null> {
     const realtime = json?.data?.realtime
     if (!Array.isArray(realtime) || realtime.length === 0) return null
 
-    // Log first item's fields to check for image data
-    const firstItem = realtime[0]
-    console.log("[WEIBO-API] first item fields:", JSON.stringify({
-      word: firstItem?.word?.substring(0, 15),
-      pic_url: firstItem?.pic_url,
-      icon: firstItem?.icon,
-      icon_desc: firstItem?.icon_desc,
-      icon_desc_color: firstItem?.icon_desc_color,
-      allKeys: Object.keys(firstItem || {}),
-    }))
-
-    const items: WeiboHotItem[] = realtime.slice(0, 20).map((item: { word?: string; num?: number; raw_hot?: number; icon?: string }, i: number) => ({
+    const items: WeiboHotItem[] = realtime.slice(0, 20).map((item: { word?: string; num?: number; raw_hot?: number }, i: number) => ({
       rank: i + 1,
       title: item.word || "",
       hotValue: item.num || item.raw_hot || 0,
       url: `https://s.weibo.com/weibo?q=${encodeURIComponent(item.word || "")}`,
-      imageUrl: `https://picsum.photos/seed/${encodeURIComponent((item.word || "").substring(0, 8))}/800/450`, // placeholder
+      imageUrl: `https://picsum.photos/seed/${encodeURIComponent((item.word || "").substring(0, 8))}/800/450`,
       authorName: "微博热搜",
       authorAvatar: undefined,
       excerpt: `#${item.word}# 正在热议中`,
       mediaType: "image" as const,
     }))
 
-    console.log("[WEIBO-API] source: weibo official, count:", items.length)
+    console.log("[WEIBO-API] source: official, count:", items.length)
     return items
   } catch (e) {
-    console.log("[WEIBO-API] weibo official failed:", e instanceof Error ? e.message : String(e))
+    console.log("[WEIBO-API] official failed:", e instanceof Error ? e.message : String(e))
     return null
   }
 }
@@ -185,7 +143,7 @@ async function try60sApi(): Promise<WeiboHotItem[] | null> {
   try {
     const res = await fetch("https://60s.viki.moe/weibo", {
       headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     })
     console.log("[WEIBO-API] 60s status:", res.status)
     if (!res.ok) return null
@@ -215,41 +173,26 @@ async function try60sApi(): Promise<WeiboHotItem[] | null> {
 
 /** Static fallback */
 function getStaticFallback(): WeiboHotItem[] {
-  const topics = ["热搜话题1", "热搜话题2", "热搜话题3", "热搜话题4", "热搜话题5"]
   console.log("[WEIBO-API] source: static fallback")
-  return topics.map((title, i) => ({
-    rank: i + 1,
-    title,
-    hotValue: 1000000 - i * 100000,
-    url: `https://s.weibo.com/weibo?q=${encodeURIComponent(title)}`,
-    imageUrl: `https://picsum.photos/seed/${i}/800/450`,
-    authorName: "微博热搜",
-    authorAvatar: undefined,
-    excerpt: `${title}正在热议`,
-    mediaType: "image" as const,
-  }))
+  return []
 }
 
 /**
  * Transfer images to R2 if they are from protected domains
  */
 async function transferImagesToR2(items: WeiboHotItem[]): Promise<WeiboHotItem[]> {
-  const protectedItems = items.filter(it => /sinaimg\.cn/i.test(it.imageUrl || ""))
-  console.log("[WEIBO-R2] items to transfer:", protectedItems.length, "of", items.length)
+  const protectedItems = items.filter(it => detectPlatform(it.imageUrl) !== "unknown")
+  console.log("[WEIBO-R2] protected items:", protectedItems.length, "of", items.length)
   
-  if (protectedItems.length === 0) {
-    return items
-  }
+  if (protectedItems.length === 0) return items
   
   const results = await Promise.allSettled(
     items.map(async (item) => {
-      const platform = detectPlatform(item.imageUrl)
-      if (platform === "unknown") return item
-      
+      if (detectPlatform(item.imageUrl) === "unknown") return item
       try {
         const result = await transferImage(item.imageUrl)
         if (result.proxied) {
-          console.log("[WEIBO-R2] transferred:", item.imageUrl.substring(0, 40), "->", result.proxied.substring(0, 40))
+          console.log("[WEIBO-R2] transferred:", item.title.substring(0, 10))
           return { ...item, imageUrl: result.proxied }
         }
         return item
@@ -268,16 +211,16 @@ export async function GET() {
     return NextResponse.json(cache.data)
   }
 
-  // Try sources in order
   let items = await tryWeiboOfficial()
-  if (!items) items = await try60sApi()
-  if (!items) items = getStaticFallback()
+  if (!items || items.length === 0) items = await try60sApi()
+  if (!items || items.length === 0) items = getStaticFallback()
 
-  // Enrich with real images from s.weibo.com
-  items = await enrichItemsWithImages(items)
-  
-  // Transfer protected images to R2
-  items = await transferImagesToR2(items)
+  if (items.length > 0) {
+    // Enrich with Bing images
+    items = await enrichWithBingImages(items)
+    // Transfer protected images to R2
+    items = await transferImagesToR2(items)
+  }
 
   cache = { data: items, timestamp: now }
   return NextResponse.json(items)

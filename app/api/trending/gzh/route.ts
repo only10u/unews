@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { transferImage, detectPlatform } from "@/lib/r2"
 
-// GZH (WeChat Official Accounts) trending - v16 with real image enrichment
+// GZH (WeChat Official Accounts) trending - v18 with Bing news search
 interface GzhHotItem {
   rank: number
   title: string
@@ -15,143 +15,110 @@ interface GzhHotItem {
 }
 
 let cache: { data: GzhHotItem[]; timestamp: number } | null = null
-const CACHE_TTL = 60_000
-
-const MAX_CONCURRENT = 3
-const DELAY_MS = 500
+const CACHE_TTL = 120_000
 
 /**
- * Enrichment: Fetch cover image from Sogou WeChat search
+ * Fetch news image from Bing News Search
  */
-async function enrichGzhImage(keyword: string): Promise<{ imageUrl?: string; authorName?: string } | null> {
+async function fetchBingNewsImage(keyword: string): Promise<string | null> {
   try {
-    const url = `https://weixin.sogou.com/weixin?type=2&query=${encodeURIComponent(keyword)}`
+    const query = encodeURIComponent(keyword + " 公众号")
+    const url = `https://cn.bing.com/news/search?q=${query}&format=rss`
+    
     const res = await fetch(url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml",
-        "Accept-Language": "zh-CN,zh;q=0.9",
-        "Referer": "https://weixin.sogou.com/",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "application/rss+xml,text/xml,*/*",
       },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(5000),
     })
     
-    if (!res.ok) {
-      console.log("[GZH-ENRICH] fetch failed:", res.status, "for:", keyword.substring(0, 10))
-      return null
+    if (!res.ok) return null
+    
+    const xml = await res.text()
+    // Extract image from RSS <enclosure> or <media:thumbnail>
+    const imgMatch = xml.match(/<enclosure[^>]*url="([^"]+)"/i)
+      || xml.match(/<media:thumbnail[^>]*url="([^"]+)"/i)
+      || xml.match(/<img[^>]*src="([^"]+)"/i)
+    
+    if (imgMatch && imgMatch[1]) {
+      return imgMatch[1]
     }
-    
-    const html = await res.text()
-    
-    // Extract mmbiz.qpic.cn image URLs
-    // Pattern: src="http://mmbiz.qpic.cn/..." or img class="img-news" src="..."
-    const imgMatches = html.match(/(?:src=["'])((?:https?:)?\/\/mmbiz\.qpic\.cn[^"']+)/gi)
-    
-    if (imgMatches && imgMatches.length > 0) {
-      const match = imgMatches[0].match(/(?:src=["'])((?:https?:)?\/\/[^"']+)/i)
-      if (match && match[1]) {
-        let imageUrl = match[1]
-        if (imageUrl.startsWith("//")) imageUrl = "https:" + imageUrl
-        console.log("[GZH-ENRICH] found image:", imageUrl.substring(0, 50), "for:", keyword.substring(0, 10))
-        return { imageUrl }
-      }
-    }
-    
-    // Try to extract account name
-    const authorMatch = html.match(/<a[^>]*account_name[^>]*>([^<]+)<\/a>/i) 
-      || html.match(/<span[^>]*class="account"[^>]*>([^<]+)<\/span>/i)
-    
-    if (authorMatch) {
-      return { authorName: authorMatch[1].trim() }
-    }
-    
-    console.log("[GZH-ENRICH] no mmbiz image found for:", keyword.substring(0, 10))
     return null
-  } catch (e) {
-    console.log("[GZH-ENRICH] exception:", e instanceof Error ? e.message : String(e))
+  } catch {
     return null
   }
 }
 
 /**
- * Batch enrichment with concurrency control
+ * Fetch image from Bing Image Search
  */
-async function enrichItemsWithImages(items: GzhHotItem[]): Promise<GzhHotItem[]> {
-  console.log("[GZH-ENRICH] starting enrichment for", items.length, "items")
-  
-  const results: GzhHotItem[] = [...items]
-  
-  for (let i = 0; i < Math.min(items.length, 10); i += MAX_CONCURRENT) {
-    const batch = items.slice(i, i + MAX_CONCURRENT)
-    const batchResults = await Promise.allSettled(
-      batch.map(async (item, idx) => {
-        if (idx > 0) await new Promise(resolve => setTimeout(resolve, DELAY_MS))
-        return enrichGzhImage(item.title)
-      })
-    )
-    
-    for (let j = 0; j < batchResults.length; j++) {
-      const result = batchResults[j]
-      if (result.status === "fulfilled" && result.value) {
-        if (result.value.imageUrl) {
-          results[i + j] = { ...results[i + j], imageUrl: result.value.imageUrl }
-        }
-        if (result.value.authorName) {
-          results[i + j] = { ...results[i + j], authorName: result.value.authorName }
-        }
-      }
-    }
-    
-    if (i + MAX_CONCURRENT < items.length) {
-      await new Promise(resolve => setTimeout(resolve, DELAY_MS))
-    }
-  }
-  
-  const enrichedCount = results.filter((item, idx) => item.imageUrl !== items[idx].imageUrl).length
-  console.log("[GZH-ENRICH] enrichment complete, enriched:", enrichedCount)
-  
-  return results
-}
-
-/** Source 1: TopHub API for WeChat */
-async function tryTopHub(): Promise<GzhHotItem[] | null> {
+async function fetchBingImage(keyword: string): Promise<string | null> {
   try {
-    const res = await fetch("https://api.tophubdata.com/v2/nodes/WnBe01o371", {
-      headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-      signal: AbortSignal.timeout(6000),
+    const query = encodeURIComponent(keyword)
+    const url = `https://cn.bing.com/images/search?q=${query}&first=1&count=1`
+    
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Accept": "text/html",
+        "Accept-Language": "zh-CN,zh;q=0.9",
+      },
+      signal: AbortSignal.timeout(5000),
     })
-    console.log("[GZH-API] tophub status:", res.status)
+    
     if (!res.ok) return null
-    const json = await res.json()
-    const data = json?.data?.items
-    if (!Array.isArray(data) || data.length === 0) return null
-
-    const items: GzhHotItem[] = data.slice(0, 20).map((item: { title?: string; extra?: { hot?: number; info?: string }; url?: string }, i: number) => ({
-      rank: i + 1,
-      title: item.title || "",
-      hotValue: item.extra?.hot || 0,
-      url: item.url || `https://weixin.sogou.com/weixin?query=${encodeURIComponent(item.title || "")}`,
-      imageUrl: `https://picsum.photos/seed/wx${i}/800/450`,
-      authorName: item.extra?.info || "公众号热文",
-      authorAvatar: undefined,
-      excerpt: item.title || "",
-      mediaType: "image" as const,
-    }))
-
-    console.log("[GZH-API] source: tophub, count:", items.length)
-    return items
-  } catch (e) {
-    console.log("[GZH-API] tophub failed:", e instanceof Error ? e.message : String(e))
+    
+    const html = await res.text()
+    const murlMatch = html.match(/"murl":"(https?:[^"]+)"/i)
+    if (murlMatch && murlMatch[1]) {
+      return murlMatch[1].replace(/\\u002f/g, "/")
+    }
+    return null
+  } catch {
     return null
   }
 }
 
-/** Source 2: 60s API */
+/**
+ * Enrich items with Bing images
+ */
+async function enrichWithBingImages(items: GzhHotItem[]): Promise<GzhHotItem[]> {
+  console.log("[GZH-BING] enriching", items.length, "items")
+  
+  const toEnrich = items.slice(0, 10)
+  const results = await Promise.allSettled(
+    toEnrich.map(async (item, idx) => {
+      await new Promise(r => setTimeout(r, idx * 200))
+      // Try news first, then image search
+      let img = await fetchBingNewsImage(item.title)
+      if (!img) img = await fetchBingImage(item.title)
+      return img
+    })
+  )
+  
+  const enriched = items.map((item, i) => {
+    if (i < results.length) {
+      const result = results[i]
+      if (result.status === "fulfilled" && result.value) {
+        return { ...item, imageUrl: result.value }
+      }
+    }
+    return item
+  })
+  
+  const count = enriched.filter((item, i) => item.imageUrl !== items[i].imageUrl).length
+  console.log("[GZH-BING] enriched:", count)
+  
+  return enriched
+}
+
+/** Source 1: 60s API for WeChat hot articles */
 async function try60sApi(): Promise<GzhHotItem[] | null> {
   try {
     const res = await fetch("https://60s.viki.moe/wechat", {
       headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" },
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(5000),
     })
     console.log("[GZH-API] 60s status:", res.status)
     if (!res.ok) return null
@@ -159,15 +126,15 @@ async function try60sApi(): Promise<GzhHotItem[] | null> {
     const data = json?.data
     if (!Array.isArray(data) || data.length === 0) return null
 
-    const items: GzhHotItem[] = data.slice(0, 20).map((item: { title?: string; url?: string; hot?: number }, i: number) => ({
+    const items: GzhHotItem[] = data.slice(0, 20).map((item: { title?: string; url?: string; digest?: string }, i: number) => ({
       rank: i + 1,
       title: item.title || "",
-      hotValue: item.hot || 0,
+      hotValue: 0,
       url: item.url || `https://weixin.sogou.com/weixin?query=${encodeURIComponent(item.title || "")}`,
-      imageUrl: `https://picsum.photos/seed/wx${i}/800/450`,
+      imageUrl: `https://picsum.photos/seed/wx${encodeURIComponent((item.title || "").substring(0, 6))}/800/450`,
       authorName: "公众号热文",
       authorAvatar: undefined,
-      excerpt: item.title || "",
+      excerpt: item.digest || item.title || "",
       mediaType: "image" as const,
     }))
 
@@ -179,41 +146,79 @@ async function try60sApi(): Promise<GzhHotItem[] | null> {
   }
 }
 
-/** Static fallback */
-function getStaticFallback(): GzhHotItem[] {
-  const topics = ["公众号热文1", "公众号热文2", "公众号热文3"]
-  console.log("[GZH-API] source: static fallback")
-  return topics.map((title, i) => ({
-    rank: i + 1,
-    title,
-    hotValue: 1000000,
-    url: `https://weixin.sogou.com/weixin?query=${encodeURIComponent(title)}`,
-    imageUrl: `https://picsum.photos/seed/wx${i}/800/450`,
-    authorName: "公众号热文",
-    authorAvatar: undefined,
-    excerpt: title,
-    mediaType: "image" as const,
-  }))
+/** Source 2: Bing News RSS as content source */
+async function tryBingNews(): Promise<GzhHotItem[] | null> {
+  try {
+    const res = await fetch("https://cn.bing.com/news/search?q=热门公众号&format=rss", {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/rss+xml,text/xml",
+      },
+      signal: AbortSignal.timeout(5000),
+    })
+    console.log("[GZH-API] bing news status:", res.status)
+    if (!res.ok) return null
+    
+    const xml = await res.text()
+    // Parse RSS items
+    const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)
+    const items: GzhHotItem[] = []
+    
+    let rank = 1
+    for (const match of itemMatches) {
+      if (rank > 20) break
+      const content = match[1]
+      const title = content.match(/<title>(?:<!\[CDATA\[)?([^\]<]+)/)?.[1] || ""
+      const link = content.match(/<link>([^<]+)/)?.[1] || ""
+      const desc = content.match(/<description>(?:<!\[CDATA\[)?([^\]<]+)/)?.[1] || ""
+      const img = content.match(/<enclosure[^>]*url="([^"]+)"/)?.[1]
+        || content.match(/<media:thumbnail[^>]*url="([^"]+)"/)?.[1]
+      
+      if (title) {
+        items.push({
+          rank: rank++,
+          title: title.trim(),
+          hotValue: 0,
+          url: link || `https://weixin.sogou.com/weixin?query=${encodeURIComponent(title)}`,
+          imageUrl: img || `https://picsum.photos/seed/wx${rank}/800/450`,
+          authorName: "公众号热文",
+          authorAvatar: undefined,
+          excerpt: desc?.substring(0, 100) || title,
+          mediaType: "image" as const,
+        })
+      }
+    }
+    
+    if (items.length === 0) return null
+    console.log("[GZH-API] source: bing news, count:", items.length)
+    return items
+  } catch (e) {
+    console.log("[GZH-API] bing news failed:", e instanceof Error ? e.message : String(e))
+    return null
+  }
+}
+
+/** Empty fallback - show "暂无数据" instead of fake data */
+function getEmptyFallback(): GzhHotItem[] {
+  console.log("[GZH-API] source: empty fallback (no real data available)")
+  return []
 }
 
 /**
- * Transfer images to R2 if they are from protected domains
+ * Transfer protected images to R2
  */
 async function transferImagesToR2(items: GzhHotItem[]): Promise<GzhHotItem[]> {
-  const protectedItems = items.filter(it => /mmbiz\.qpic\.cn/i.test(it.imageUrl || ""))
-  console.log("[GZH-R2] items to transfer:", protectedItems.length, "of", items.length)
+  const protectedItems = items.filter(it => detectPlatform(it.imageUrl) !== "unknown")
+  console.log("[GZH-R2] protected items:", protectedItems.length)
   
   if (protectedItems.length === 0) return items
   
   const results = await Promise.allSettled(
     items.map(async (item) => {
-      const platform = detectPlatform(item.imageUrl)
-      if (platform === "unknown") return item
-      
+      if (detectPlatform(item.imageUrl) === "unknown") return item
       try {
         const result = await transferImage(item.imageUrl)
         if (result.proxied) {
-          console.log("[GZH-R2] transferred:", item.imageUrl.substring(0, 40))
           return { ...item, imageUrl: result.proxied }
         }
         return item
@@ -232,15 +237,14 @@ export async function GET() {
     return NextResponse.json(cache.data)
   }
 
-  let items = await tryTopHub()
-  if (!items) items = await try60sApi()
-  if (!items) items = getStaticFallback()
+  let items = await try60sApi()
+  if (!items || items.length === 0) items = await tryBingNews()
+  if (!items || items.length === 0) items = getEmptyFallback()
 
-  // Enrich with real images from sogou weixin search
-  items = await enrichItemsWithImages(items)
-  
-  // Transfer protected images to R2
-  items = await transferImagesToR2(items)
+  if (items.length > 0) {
+    items = await enrichWithBingImages(items)
+    items = await transferImagesToR2(items)
+  }
 
   cache = { data: items, timestamp: now }
   return NextResponse.json(items)
