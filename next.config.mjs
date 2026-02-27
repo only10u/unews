@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v13 - R2 image transfer system
+// Force redeploy: v14 - auto R2 transfer in API routes
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

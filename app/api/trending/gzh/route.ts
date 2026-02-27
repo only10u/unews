@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
+import { transferImage, detectPlatform } from "@/lib/r2"
 
-// GZH (WeChat Official Accounts) trending - v11 with more API sources
+// GZH (WeChat Official Accounts) trending - v14 with R2 image transfer
 interface GzhHotItem {
   rank: number
   title: string
@@ -141,6 +142,30 @@ function getStaticFallback(): GzhHotItem[] {
   }))
 }
 
+/**
+ * Transfer images to R2 if they are from protected domains
+ */
+async function transferImagesToR2(items: GzhHotItem[]): Promise<GzhHotItem[]> {
+  const results = await Promise.allSettled(
+    items.map(async (item) => {
+      const platform = detectPlatform(item.imageUrl)
+      if (platform === "unknown") return item
+      
+      try {
+        const result = await transferImage(item.imageUrl)
+        if (result.proxied) {
+          console.log("[GZH-R2] transferred:", item.imageUrl.substring(0, 50), "->", result.proxied.substring(0, 50))
+          return { ...item, imageUrl: result.proxied }
+        }
+        return item
+      } catch {
+        return item
+      }
+    })
+  )
+  return results.map((r, i) => r.status === "fulfilled" ? r.value : items[i])
+}
+
 export async function GET() {
   const now = Date.now()
   if (cache && now - cache.timestamp < CACHE_TTL) {
@@ -151,6 +176,9 @@ export async function GET() {
   if (!items) items = await try60sApi()
   if (!items) items = await tryOioweb()
   if (!items) items = getStaticFallback()
+
+  // Transfer protected images to R2
+  items = await transferImagesToR2(items)
 
   cache = { data: items, timestamp: now }
   return NextResponse.json(items)

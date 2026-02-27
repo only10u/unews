@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
+import { transferImage, detectPlatform } from "@/lib/r2"
 
-// Weibo trending - v11 with more API sources
+// Weibo trending - v14 with R2 image transfer
 interface WeiboHotItem {
   rank: number
   title: string
@@ -194,6 +195,37 @@ function getStaticFallback(): WeiboHotItem[] {
   }))
 }
 
+/**
+ * Transfer images to R2 if they are from protected domains
+ * Returns items with R2 URLs or original URLs on failure
+ */
+async function transferImagesToR2(items: WeiboHotItem[]): Promise<WeiboHotItem[]> {
+  const results = await Promise.allSettled(
+    items.map(async (item) => {
+      const platform = detectPlatform(item.imageUrl)
+      // Only transfer protected domain images (sinaimg, mmbiz, douyinpic)
+      if (platform === "unknown") {
+        return item
+      }
+      
+      try {
+        const result = await transferImage(item.imageUrl)
+        if (result.proxied) {
+          console.log("[WEIBO-R2] transferred:", item.imageUrl.substring(0, 50), "->", result.proxied.substring(0, 50))
+          return { ...item, imageUrl: result.proxied }
+        }
+        console.log("[WEIBO-R2] transfer failed, using original:", result.error)
+        return item
+      } catch (e) {
+        console.log("[WEIBO-R2] exception:", e instanceof Error ? e.message : String(e))
+        return item
+      }
+    })
+  )
+  
+  return results.map((r, i) => r.status === "fulfilled" ? r.value : items[i])
+}
+
 export async function GET() {
   const now = Date.now()
   if (cache && now - cache.timestamp < CACHE_TTL) {
@@ -206,6 +238,9 @@ export async function GET() {
   if (!items) items = await tryWeiboOfficial()
   if (!items) items = await tryOioweb()
   if (!items) items = getStaticFallback()
+
+  // Transfer protected images to R2
+  items = await transferImagesToR2(items)
 
   cache = { data: items, timestamp: now }
   return NextResponse.json(items)
