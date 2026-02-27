@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v9 - no-referrer policy for anti-hotlink bypass
+// Force redeploy: v10 - public aggregator APIs only (vvhan + tenapi)
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
