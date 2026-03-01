@@ -157,8 +157,8 @@ function trendingToNewsItems(
     // Use real enriched author data from API (prefer API author over generic platform default)
     const authorName = item.topAuthor ? item.topAuthor : auth.name
     const authorAvatar = item.topAuthorAvatar ? item.topAuthorAvatar : auth.avatar
-    const summary = item.excerpt
-      || `${getPlatformLabel(platform === "gongzhonghao" ? "gongzhonghao" : platform)}热搜第${item.rank}名，热度值 ${formatHotValue(item.hotValue)}。${delta > 0 ? `15分钟内上升${delta}位。` : ""}`
+    // Use real excerpt only - no fake fallback text
+    const summary = item.excerpt || ""
 
     return {
       id: `${platform}-trending-${item.id}`,
@@ -170,7 +170,7 @@ function trendingToNewsItems(
       title: item.title,
       summary,
       score,
-      scoreReason: `${getPlatformLabel(platform === "gongzhonghao" ? "gongzhonghao" : platform)}热搜 #${item.rank}${delta > 0 ? `，15分钟内飙升${delta}位` : ""}`,
+      scoreReason: "",
       tags,
       likes: Math.floor(item.hotValue / 100),
       reposts: Math.floor(item.hotValue / 200),
