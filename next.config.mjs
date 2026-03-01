@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v23 - fix API routes to return TrendingItem format
+// Force redeploy: v24 - 5min cache + stale-while-revalidate for stable image loading
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

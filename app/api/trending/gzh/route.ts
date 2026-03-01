@@ -4,8 +4,8 @@ import { NextResponse } from "next/server"
 export async function GET() {
   try {
     const res = await fetch("http://1.12.248.87:3001/api/trending/gzh", {
-      next: { revalidate: 60 },
-      signal: AbortSignal.timeout(15000),
+      next: { revalidate: 300 },
+      signal: AbortSignal.timeout(25000),
     })
     if (!res.ok) throw new Error(`upstream ${res.status}`)
     const raw = await res.json()
@@ -35,9 +35,18 @@ export async function GET() {
       topAuthor: data[0]?.topAuthor,
     }))
     
-    return NextResponse.json(data)
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+      },
+    })
   } catch (e) {
     console.log("[GZH-API] error:", String(e))
-    return NextResponse.json([], { status: 200 })
+    return NextResponse.json([], { 
+      status: 200,
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+      },
+    })
   }
 }
