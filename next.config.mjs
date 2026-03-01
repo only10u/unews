@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v20 - remove all paywalls completely
+// Force redeploy: v21 - direct proxy to domestic crawler server
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
