@@ -183,19 +183,56 @@ async function transferImagesToR2(items: DouyinHotItem[]): Promise<DouyinHotItem
   return results.map((r, i) => r.status === "fulfilled" ? r.value : items[i])
 }
 
+/**
+ * Try to get data from domestic crawler push first
+ */
+async function tryCrawlerCache(): Promise<DouyinHotItem[] | null> {
+  try {
+    const res = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : ''}/api/crawler/push?platform=douyin`, {
+      signal: AbortSignal.timeout(2000),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.source === "crawler" && Array.isArray(data.data) && data.data.length > 0) {
+        console.log("[DOUYIN-API] source: crawler cache, count:", data.data.length)
+        return data.data as DouyinHotItem[]
+      }
+    }
+  } catch (e) {
+    console.log("[DOUYIN-API] crawler cache failed:", e instanceof Error ? e.message : String(e))
+  }
+  return null
+}
+
 export async function GET() {
   const now = Date.now()
   if (cache && now - cache.timestamp < CACHE_TTL) {
     return NextResponse.json(cache.data)
   }
 
-  let items = await tryIesDouyin()
-  if (!items || items.length === 0) items = await try60sApi()
-  if (!items || items.length === 0) items = getEmptyFallback()
-
-  if (items.length > 0) {
-    items = await enrichWithBingImages(items)
-    items = await transferImagesToR2(items)
+  // Priority 1: Domestic crawler pushed data
+  let items = await tryCrawlerCache()
+  
+  // Priority 2: IES API + Bing enrichment  
+  if (!items || items.length === 0) {
+    items = await tryIesDouyin()
+    if (items && items.length > 0) {
+      items = await enrichWithBingImages(items)
+      items = await transferImagesToR2(items)
+    }
+  }
+  
+  // Priority 3: 60s API
+  if (!items || items.length === 0) {
+    items = await try60sApi()
+    if (items && items.length > 0) {
+      items = await enrichWithBingImages(items)
+    }
+  }
+  
+  // Priority 4: Empty fallback
+  if (!items || items.length === 0) {
+    items = getEmptyFallback()
   }
 
   cache = { data: items, timestamp: now }

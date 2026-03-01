@@ -205,21 +205,57 @@ async function transferImagesToR2(items: WeiboHotItem[]): Promise<WeiboHotItem[]
   return results.map((r, i) => r.status === "fulfilled" ? r.value : items[i])
 }
 
+/**
+ * Try to get data from domestic crawler push first
+ */
+async function tryCrawlerCache(): Promise<WeiboHotItem[] | null> {
+  try {
+    // Import dynamically to avoid circular dependency
+    const res = await fetch(`${process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : ''}/api/crawler/push?platform=weibo`, {
+      signal: AbortSignal.timeout(2000),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (data.source === "crawler" && Array.isArray(data.data) && data.data.length > 0) {
+        console.log("[WEIBO-API] source: crawler cache, count:", data.data.length)
+        return data.data as WeiboHotItem[]
+      }
+    }
+  } catch (e) {
+    console.log("[WEIBO-API] crawler cache failed:", e instanceof Error ? e.message : String(e))
+  }
+  return null
+}
+
 export async function GET() {
   const now = Date.now()
   if (cache && now - cache.timestamp < CACHE_TTL) {
     return NextResponse.json(cache.data)
   }
 
-  let items = await tryWeiboOfficial()
-  if (!items || items.length === 0) items = await try60sApi()
-  if (!items || items.length === 0) items = getStaticFallback()
-
-  if (items.length > 0) {
-    // Enrich with Bing images
-    items = await enrichWithBingImages(items)
-    // Transfer protected images to R2
-    items = await transferImagesToR2(items)
+  // Priority 1: Domestic crawler pushed data (with real images already transferred to R2)
+  let items = await tryCrawlerCache()
+  
+  // Priority 2: Weibo official API + Bing enrichment
+  if (!items || items.length === 0) {
+    items = await tryWeiboOfficial()
+    if (items && items.length > 0) {
+      items = await enrichWithBingImages(items)
+      items = await transferImagesToR2(items)
+    }
+  }
+  
+  // Priority 3: 60s API
+  if (!items || items.length === 0) {
+    items = await try60sApi()
+    if (items && items.length > 0) {
+      items = await enrichWithBingImages(items)
+    }
+  }
+  
+  // Priority 4: Static fallback
+  if (!items || items.length === 0) {
+    items = getStaticFallback()
   }
 
   cache = { data: items, timestamp: now }

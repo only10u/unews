@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v18 - Bing image search + IES douyin API
+// Force redeploy: v19 - crawler push API + free user access
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

@@ -32,7 +32,7 @@ interface NewsFeedProps {
 }
 
 const PREVIEW_COUNT = 20
-const FREE_PREVIEW = 3
+const FREE_PREVIEW = 999 // Temporarily disabled: allow all content for free users
 const W1 = 0.5  // initial weight factor
 const W2 = 0.35 // freshness factor
 const W3 = 0.15 // burst bonus factor
