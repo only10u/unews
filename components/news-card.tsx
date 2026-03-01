@@ -33,6 +33,7 @@ interface NewsCardProps {
   aiSummaryEnabled?: boolean
   onTogglePin?: (id: string) => void
   onHide?: (id: string) => void
+  fontSize?: number
 }
 
 function getPlatformIcon(p: NewsItem["platform"]): string {
@@ -79,7 +80,7 @@ function proxyImage(url: string | undefined): string | undefined {
 // Images, content text, and avatar are ALWAYS visible
 // Expand reveals: detail/video + AI summary + interactions
 // ─────────────────────────────────────────────────
-export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin, onHide }: NewsCardProps) {
+export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin, onHide, fontSize = 14 }: NewsCardProps) {
   const [showAiSummary, setShowAiSummary] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
@@ -275,13 +276,19 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             </span>
           </div>
         )}
-        <h3 className="font-bold text-foreground text-sm leading-snug mb-2 text-balance">
+        <h3 
+          className="font-bold text-foreground leading-snug mb-2 text-balance"
+          style={{ fontSize: `${fontSize}px` }}
+        >
           {item.title}
         </h3>
 
         {/* ═══════ Row 3: Content Text (2-3 lines) ═══════ */}
         {contentText && (
-          <p className="text-sm leading-relaxed line-clamp-3 text-foreground/80 mb-2.5">
+          <p 
+            className="leading-relaxed line-clamp-3 text-foreground/80 mb-2.5"
+            style={{ fontSize: `${fontSize}px` }}
+          >
             {contentText}
           </p>
         )}

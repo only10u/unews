@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react"
 import { type Platform } from "@/lib/mock-data"
-import { TopNav } from "@/components/top-nav"
+import { TopNav, type FontSettings } from "@/components/top-nav"
 import { NewsFeed } from "@/components/news-feed"
 import { HotSidebar } from "@/components/hot-sidebar"
 import { TickerTape } from "@/components/ticker-tape"
@@ -46,6 +46,10 @@ export default function HomePage() {
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [keywords, setKeywords] = useState<string[]>([])
   const [sidebarWidth, setSidebarWidth] = useState(350)
+  const [fontSettings, setFontSettings] = useState<FontSettings>({
+    hotListFontSize: 14,
+    tweetFontSize: 14,
+  })
 
   // Load persisted state on mount
   useEffect(() => {
@@ -114,6 +118,8 @@ export default function HomePage() {
         onOpenTutorial={() => setTutorialOpen(true)}
         aiSummaryEnabled={aiSummaryEnabled}
         onToggleAiSummary={handleToggleAiSummary}
+        fontSettings={fontSettings}
+        onFontSettingsChange={setFontSettings}
       />
 
       {/* Main Content Area */}
@@ -131,11 +137,12 @@ export default function HomePage() {
             onOpenAuthDialog={() => setAuthDialogOpen(true)}
             scoreThreshold={scoreThreshold}
             keywords={keywords}
+            tweetFontSize={fontSettings.tweetFontSize}
           />
         </div>
 
         {/* Hot Rankings Sidebar */}
-        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} isAuthed={isAuthed} />
+        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} isAuthed={isAuthed} hotListFontSize={fontSettings.hotListFontSize} />
       </div>
 
       {/* Audio unlock overlay removed */}
