@@ -9,7 +9,7 @@ import { TickerTape } from "@/components/ticker-tape"
 import { SoundControl } from "@/components/sound-control"
 import { AuthDialog } from "@/components/auth-dialog"
 import { PushConfig } from "@/components/push-config"
-import { AudioUnlockOverlay } from "@/components/audio-unlock-overlay"
+// AudioUnlockOverlay removed - no longer prompting for audio permission
 import { TutorialDialog } from "@/components/tutorial-dialog"
 
 function getStoredAuth(): boolean {
@@ -41,7 +41,7 @@ export default function HomePage() {
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [pushConfigOpen, setPushConfigOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
-  const [isAuthed, setIsAuthed] = useState(false)
+  const [isAuthed, setIsAuthed] = useState(true) // Temporarily: all users have full access
   const [aiSummaryEnabled, setAiSummaryEnabled] = useState(false)
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [keywords, setKeywords] = useState<string[]>([])
@@ -138,8 +138,7 @@ export default function HomePage() {
         <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} isAuthed={isAuthed} />
       </div>
 
-      {/* Audio unlock overlay */}
-      <AudioUnlockOverlay />
+      {/* Audio unlock overlay removed */}
 
       {/* Bottom Ticker Tape */}
       <TickerTape />

@@ -23,10 +23,8 @@ import {
   TrendingUp,
   TrendingDown,
   Flame,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react"
-import { AspectRatio } from "@/components/ui/aspect-ratio"
+
 
 interface NewsCardProps {
   item: NewsItem
@@ -86,6 +84,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [avatarError, setAvatarError] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [detailData, setDetailData] = useState<{
     detailContent: string
@@ -104,10 +103,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const avatarUrl = proxyImage(item.authorAvatar)
   const videoUrl = item.videoUrl
   const isVideo = item.mediaType === "video" || (videoUrl && /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(videoUrl))
-  const hasImage = !!imageUrl && !imgError
 
-  // ─── Content text ───
-  const contentText = item.detailContent || item.summary || ""
+  // ─── Content text - priority: summary > excerpt > detailContent > title ───
+  const contentText = item.summary || (item as any).excerpt || item.detailContent || ""
 
   // ─── Deep fetch on expand ───
   useEffect(() => {
@@ -208,26 +206,17 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         <div className="flex items-center gap-2.5 mb-2">
           {/* Avatar */}
           <div className="shrink-0 w-9 h-9 rounded-full overflow-hidden bg-secondary border border-border/30">
-            {avatarUrl ? (
+            {avatarUrl && !avatarError ? (
               <img
                 src={avatarUrl}
                 alt={item.author}
-                width={36}
-                height={36}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  // fallback to platform icon
-                  (e.target as HTMLImageElement).src = getPlatformIcon(item.platform)
-                }}
+                onError={() => setAvatarError(true)}
               />
             ) : (
-              <img
-                src={getPlatformIcon(item.platform)}
-                alt={getPlatformLabel(item.platform)}
-                width={36}
-                height={36}
-                className="w-full h-full object-cover p-1.5 opacity-60"
-              />
+              <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground">
+                {(item.author || item.authorAvatar || getPlatformLabel(item.platform))[0]}
+              </div>
             )}
           </div>
 
@@ -278,37 +267,43 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
         </div>
 
-        {/* ═══════ Row 2: Title (ALWAYS VISIBLE) ═══════ */}
+        {/* ═══════ Row 2: Hot rank + Title (ALWAYS VISIBLE) ═══════ */}
+        {item.platformRank && (
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
+              {"热搜 #" + item.platformRank}
+            </span>
+          </div>
+        )}
         <h3 className="font-bold text-foreground text-sm leading-snug mb-2 text-balance">
           {item.title}
         </h3>
 
-        {/* ═══════ Row 3: Content Text (ALWAYS VISIBLE - up to 3 lines) ═══════ */}
+        {/* ═══════ Row 3: Content Text (2-3 lines) ═══════ */}
         {contentText && (
-          <p className="text-sm text-foreground/75 leading-relaxed line-clamp-3 mb-2.5">
+          <p className="text-sm leading-relaxed line-clamp-3 text-foreground/80 mb-2.5">
             {contentText}
           </p>
         )}
 
         {/* ═══════ Row 4: Image/Video Thumbnail (ALWAYS VISIBLE) ═══════ */}
-        {hasImage && (
-          <div className="mb-2.5 rounded-xl overflow-hidden border border-border/20 shadow-sm shadow-black/10">
+        {item.imageUrl && !imgError && (
+          <div className="w-full rounded-xl overflow-hidden mb-3" style={{ maxHeight: '240px' }}>
             <a
-              href={getPlatformSearchUrl(item.platform, item.title)}
+              href={item.url || getPlatformSearchUrl(item.platform, item.title)}
               target="_blank"
               rel="noopener noreferrer"
               className="block relative"
               onClick={(e) => e.stopPropagation()}
             >
-              <AspectRatio ratio={16 / 9}>
-                <img
-                  src={imageUrl}
-                  alt={item.title}
-                  loading="lazy"
-                  onError={() => setImgError(true)}
-                  className="w-full h-full object-cover"
-                />
-              </AspectRatio>
+              <img
+                src={imageUrl}
+                alt={item.title}
+                loading="lazy"
+                onError={() => setImgError(true)}
+                className="w-full object-cover"
+                style={{ maxHeight: '240px' }}
+              />
               {/* Video play overlay */}
               {isVideo && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
@@ -357,22 +352,14 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             </a>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setShowAiSummary(!showAiSummary); if (!showAiSummary && !aiSummary) doFetchSummary() }}
-              className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors"
-            >
-              <Sparkles size={13} />
-              <span className="text-[11px]">AI</span>
-            </button>
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              <span className="text-[11px]">{isExpanded ? "收起" : "详情"}</span>
-            </button>
-          </div>
+          <a
+            href={item.url || getPlatformSearchUrl(item.platform, item.title)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary/70 hover:text-primary flex items-center gap-1"
+          >
+            查看原文 <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
 
         {/* ═══════ AI Summary (toggleable) ═══════ */}
@@ -435,14 +422,13 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             {/* Deep-scraped media */}
             {detailData?.mediaUrl && detailData.mediaType === "image" && (
               <div className="rounded-lg overflow-hidden border border-border/20">
-                <AspectRatio ratio={16 / 9}>
-                  <img
-                    src={proxyImage(detailData.mediaUrl) || detailData.mediaUrl}
-                    alt={item.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                  />
-                </AspectRatio>
+                <img
+                  src={proxyImage(detailData.mediaUrl) || detailData.mediaUrl}
+                  alt={item.title}
+                  loading="lazy"
+                  className="w-full object-cover"
+                  style={{ maxHeight: '240px' }}
+                />
               </div>
             )}
 

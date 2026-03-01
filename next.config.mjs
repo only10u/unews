@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v18 - Bing image search + IES douyin API
+// Force redeploy: v30 - fix AspectRatio removal in expanded detail area
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

@@ -82,11 +82,14 @@ export interface TrendingItem {
   isBurst?: boolean     // surged from 50+ to top 10
   // Deep content fields (from second-level scraping)
   excerpt?: string           // first post summary text
+  summary?: string           // alias for excerpt (from crawler API)
   imageUrl?: string          // first image from top post
   videoUrl?: string          // video link if applicable
   mediaType?: "image" | "video" // auto-detected media type
-  topAuthor?: string         // top post author name
-  topAuthorAvatar?: string   // top post author avatar
+  topAuthor?: string         // top post author name (old field name)
+  topAuthorAvatar?: string   // top post author avatar (old field name)
+  authorName?: string        // top post author name (new field name)
+  authorAvatar?: string      // top post author avatar (new field name)
   detailContent?: string     // pinned/top post full text
   detailLoaded?: boolean     // whether detail has been fetched
 }

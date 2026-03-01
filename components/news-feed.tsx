@@ -6,7 +6,6 @@ import {
   type Platform,
   type NewsItem,
   type TrendingItem,
-  mockNewsData,
   PLATFORM_ICONS,
 } from "@/lib/mock-data"
 import { NewsCard } from "./news-card"
@@ -32,7 +31,7 @@ interface NewsFeedProps {
 }
 
 const PREVIEW_COUNT = 20
-const FREE_PREVIEW = 3
+const FREE_PREVIEW = 999 // Temporarily disabled: allow all content for free users
 const W1 = 0.5  // initial weight factor
 const W2 = 0.35 // freshness factor
 const W3 = 0.15 // burst bonus factor
@@ -156,10 +155,10 @@ function trendingToNewsItems(
     const timestamp = minutesAgo <= 60 ? `${minutesAgo}分钟前` : `${Math.floor(minutesAgo / 60)}小时前`
 
     // Use real enriched author data from API (prefer API author over generic platform default)
-    const authorName = item.topAuthor ? item.topAuthor : auth.name
-    const authorAvatar = item.topAuthorAvatar ? item.topAuthorAvatar : auth.avatar
-    const summary = item.excerpt
-      || `${getPlatformLabel(platform === "gongzhonghao" ? "gongzhonghao" : platform)}热搜第${item.rank}名，热度值 ${formatHotValue(item.hotValue)}。${delta > 0 ? `15分钟内上升${delta}位。` : ""}`
+    const authorName = item.authorName || item.topAuthor || auth.name
+    const authorAvatar = item.authorAvatar || item.topAuthorAvatar || auth.avatar
+    // Use real excerpt only - no fake fallback text
+    const summary = item.excerpt || item.summary || ""
 
     return {
       id: `${platform}-trending-${item.id}`,
@@ -171,7 +170,7 @@ function trendingToNewsItems(
       title: item.title,
       summary,
       score,
-      scoreReason: `${getPlatformLabel(platform === "gongzhonghao" ? "gongzhonghao" : platform)}热搜 #${item.rank}${delta > 0 ? `，15分钟内飙升${delta}位` : ""}`,
+      scoreReason: "",
       tags,
       likes: Math.floor(item.hotValue / 100),
       reposts: Math.floor(item.hotValue / 200),
@@ -277,40 +276,44 @@ export function NewsFeed({
   }, [])
 
   // SWR for trending data - 15 second refresh (detail fetching is triggered per-card on expand)
-  const { data: weiboTrending, mutate: mutateWeibo } = useSWR(
+  const { data: weiboTrending, isLoading: weiboLoading, mutate: mutateWeibo } = useSWR(
     "weibo",
     trendingFetcher,
     { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
-  const { data: douyinTrending, mutate: mutateDouyin } = useSWR(
+  const { data: douyinTrending, isLoading: douyinLoading, mutate: mutateDouyin } = useSWR(
     "douyin",
     trendingFetcher,
     { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
-  const { data: gzhTrending, mutate: mutateGzh } = useSWR(
+  const { data: gzhTrending, isLoading: gzhLoading, mutate: mutateGzh } = useSWR(
     "gzh",
     trendingFetcher,
     { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
+  
+  // Compute loading state based on active channel
+  const isLoading = activeChannel === "aggregate" 
+    ? (weiboLoading || douyinLoading || gzhLoading)
+    : activeChannel === "weibo" ? weiboLoading 
+    : activeChannel === "douyin" ? douyinLoading 
+    : gzhLoading
 
-  // Convert trending to news items
+  // Convert trending to news items - use only real API data, no mock data
   const allItems = useMemo(() => {
     const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo")
     const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin")
     const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao")
 
-    // Also merge in any existing mock data for variety
-    const mockItems = [...mockNewsData]
-
     let combined: NewsItem[]
     if (activeChannel === "aggregate") {
-      combined = [...weiboNews, ...douyinNews, ...gzhNews, ...mockItems]
+      combined = [...weiboNews, ...douyinNews, ...gzhNews]
     } else if (activeChannel === "weibo") {
-      combined = [...weiboNews, ...mockItems.filter((i) => i.platform === "weibo")]
+      combined = weiboNews
     } else if (activeChannel === "douyin") {
-      combined = [...douyinNews, ...mockItems.filter((i) => i.platform === "douyin")]
+      combined = douyinNews
     } else {
-      combined = [...gzhNews, ...mockItems.filter((i) => i.platform === "gongzhonghao")]
+      combined = gzhNews
     }
 
     return combined
@@ -400,7 +403,7 @@ export function NewsFeed({
   const displayedItems = isExpanded ? flatDisplayItems : flatDisplayItems.slice(0, PREVIEW_COUNT)
   const hasMore = flatDisplayItems.length > PREVIEW_COUNT
   const platformIcon = getPlatformIcon(activeChannel)
-  const showPaywall = !isAuthed
+  const showPaywall = false // Temporarily disabled: no paywall
 
   return (
     <div className="flex-1 min-w-0">
@@ -425,7 +428,7 @@ export function NewsFeed({
             <span className="text-[11px] text-muted-foreground ml-1">
               {"共 " + totalCount + " 条"}
             </span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="实时刷新中" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="��时刷新中" />
           </div>
 
           <div className="flex items-center gap-2">
@@ -472,6 +475,26 @@ export function NewsFeed({
       {/* News List */}
       <div ref={scrollRef} className="h-[calc(100vh-56px-48px-49px)] overflow-y-auto">
         <div>
+          {/* Skeleton loading state */}
+          {isLoading && displayedItems.length === 0 && (
+            <div className="space-y-2 p-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-4 rounded-xl border border-border/40 animate-pulse">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-9 h-9 rounded-full bg-secondary" />
+                    <div className="space-y-1">
+                      <div className="h-3 w-24 bg-secondary rounded" />
+                      <div className="h-2 w-16 bg-secondary rounded" />
+                    </div>
+                  </div>
+                  <div className="h-3 w-3/4 bg-secondary rounded mb-2" />
+                  <div className="h-3 w-full bg-secondary rounded mb-2" />
+                  <div className="h-40 w-full bg-secondary rounded-xl" />
+                </div>
+              ))}
+            </div>
+          )}
+          
           {displayedItems.map((entry, index) => (
             <div key={entry.item.id}>
               {/* Paywall after free preview */}
