@@ -12,10 +12,18 @@ import {
   Key,
   Settings,
   Bell,
+  Type,
+  Minus,
+  Plus,
 } from "lucide-react"
 
 import { useTheme } from "next-themes"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
+
+export interface FontSettings {
+  hotListFontSize: number
+  tweetFontSize: number
+}
 
 interface TopNavProps {
   activeChannel: Platform
@@ -28,6 +36,8 @@ interface TopNavProps {
   onOpenTutorial?: () => void
   aiSummaryEnabled?: boolean
   onToggleAiSummary?: () => void
+  fontSettings?: FontSettings
+  onFontSettingsChange?: (settings: FontSettings) => void
 }
 
 const LOGO_URL = "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/%E5%BE%AE%E4%BF%A1%E5%9B%BE%E7%89%87_2026-01-08_132539_207-jMLYjL7vnEzvdHUsumdh9xabe09HlA.png"
@@ -50,13 +60,34 @@ export function TopNav({
   onOpenTutorial,
   aiSummaryEnabled = false,
   onToggleAiSummary,
+  fontSettings = { hotListFontSize: 14, tweetFontSize: 14 },
+  onFontSettingsChange,
 }: TopNavProps) {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const [fontMenuOpen, setFontMenuOpen] = useState(false)
+  const fontMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // Close font menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (fontMenuRef.current && !fontMenuRef.current.contains(event.target as Node)) {
+        setFontMenuOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const updateFontSize = (key: keyof FontSettings, delta: number) => {
+    const newSettings = { ...fontSettings }
+    newSettings[key] = Math.max(10, Math.min(24, fontSettings[key] + delta))
+    onFontSettingsChange?.(newSettings)
+  }
 
   return (
     <header className="sticky top-0 z-50 bg-background border-b border-border/40">
@@ -131,29 +162,63 @@ export function TopNav({
 
           <div className="w-px h-5 bg-border/40" />
 
-          {/* Social Links */}
-          <a
-            href="https://x.com/10UWINA8"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            aria-label="X (Twitter)"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-            </svg>
-          </a>
-          <a
-            href="https://t.me/wewillwina8"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            aria-label="Telegram"
-          >
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-              <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
-            </svg>
-          </a>
+          {/* Font Size Settings */}
+          <div className="relative" ref={fontMenuRef}>
+            <button
+              onClick={() => setFontMenuOpen(!fontMenuOpen)}
+              className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+              aria-label="字体设置"
+              title="调节字体大小"
+            >
+              <Type size={15} />
+            </button>
+            
+            {fontMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 rounded-lg border border-border/50 bg-background shadow-lg z-50 p-3 space-y-3">
+                <div className="text-xs font-medium text-foreground mb-2">字体大小设置</div>
+                
+                {/* Hot List Font Size */}
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-muted-foreground">热榜字体</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => updateFontSize("hotListFontSize", -1)}
+                      className="w-7 h-7 rounded-md flex items-center justify-center bg-secondary hover:bg-accent transition-colors"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="text-sm font-mono w-8 text-center">{fontSettings.hotListFontSize}</span>
+                    <button
+                      onClick={() => updateFontSize("hotListFontSize", 1)}
+                      className="w-7 h-7 rounded-md flex items-center justify-center bg-secondary hover:bg-accent transition-colors"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Tweet Font Size */}
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-muted-foreground">推文字体</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => updateFontSize("tweetFontSize", -1)}
+                      className="w-7 h-7 rounded-md flex items-center justify-center bg-secondary hover:bg-accent transition-colors"
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <span className="text-sm font-mono w-8 text-center">{fontSettings.tweetFontSize}</span>
+                    <button
+                      onClick={() => updateFontSize("tweetFontSize", 1)}
+                      className="w-7 h-7 rounded-md flex items-center justify-center bg-secondary hover:bg-accent transition-colors"
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="w-px h-5 bg-border/40" />
 

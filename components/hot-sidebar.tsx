@@ -33,6 +33,7 @@ interface HotSidebarProps {
   onToggle?: (collapsed: boolean) => void
   onWidthChange?: (width: number) => void
   isAuthed?: boolean
+  hotListFontSize?: number
 }
 
 const DEFAULT_WIDTH = 350
@@ -126,6 +127,8 @@ function TrendingList({
   viewAllUrl,
   loading,
   collapsible = true,
+  forceExpand = false,
+  fontSize = 14,
 }: {
   title: string
   icon: string
@@ -135,11 +138,15 @@ function TrendingList({
   viewAllUrl?: string
   loading?: boolean
   collapsible?: boolean
+  forceExpand?: boolean
+  fontSize?: number
 }) {
   const [changedIds, setChangedIds] = useState<Set<string>>(new Set())
   const [isExpanded, setIsExpanded] = useState(false)
   const prevItemsRef = useRef<Map<string, number>>(new Map())
-  const displayItems = isExpanded ? items : items.slice(0, defaultMaxItems)
+  // When forceExpand is true, show all items
+  const actualExpanded = forceExpand || isExpanded
+  const displayItems = actualExpanded ? items : items.slice(0, defaultMaxItems)
 
   useEffect(() => {
     const prev = prevItemsRef.current
@@ -204,7 +211,13 @@ function TrendingList({
               <span className="w-5 text-center text-xs font-bold shrink-0" style={{ color: getRankColor(item.rank) }}>
                 {item.rank}
               </span>
-              <span className="flex-1 text-sm text-foreground/90 truncate group-hover/item:text-primary transition-colors">
+              <span 
+                className={cn(
+                  "flex-1 truncate group-hover/item:text-primary transition-colors",
+                  delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-500" : "text-foreground/90"
+                )}
+                style={{ fontSize: `${fontSize}px` }}
+              >
                 {item.title}
               </span>
               {item.isBurst && (
@@ -232,13 +245,13 @@ function TrendingList({
         })}
       </div>
 
-      {/* Expand / Collapse button at the BOTTOM of the list */}
-      {collapsible && hasMore && (
+      {/* Expand / Collapse button at the BOTTOM of the list - hide when forceExpand is true */}
+      {collapsible && hasMore && !forceExpand && (
         <button
           onClick={() => setIsExpanded((p) => !p)}
           className="flex items-center justify-center gap-1 py-2 mx-3 my-2 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors border border-border/30"
         >
-          {isExpanded ? (
+          {actualExpanded ? (
             <>
               <ChevronUp size={14} />
               {"收起 (前 " + defaultMaxItems + " 条)"}
@@ -255,7 +268,7 @@ function TrendingList({
   )
 }
 
-export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = false }: HotSidebarProps) {
+export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = false, hotListFontSize = 14 }: HotSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
   const isDragging = useRef(false)
@@ -378,74 +391,83 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                 <div className="grid grid-cols-3 gap-0 h-full">
                   <div className="border-r border-border/30">
                     <TrendingList
-                      title="微博热搜"
+                      title="微博热搜 TOP 20"
                       icon={PLATFORM_ICONS.weibo}
-                      items={weibo}
-                      defaultMaxItems={10}
+                      items={weibo.slice(0, 20)}
+                      defaultMaxItems={20}
                       showViewAll
                       viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
                       loading={weiboLoading}
-                      collapsible
+                      collapsible={false}
+                      forceExpand
+                      fontSize={hotListFontSize}
                     />
                   </div>
                   <div className="border-r border-border/30">
                     <TrendingList
-                      title="抖音热搜"
+                      title="抖音热搜 TOP 20"
                       icon={PLATFORM_ICONS.douyin}
-                      items={douyin}
-                      defaultMaxItems={10}
+                      items={douyin.slice(0, 20)}
+                      defaultMaxItems={20}
                       showViewAll
                       viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
                       loading={douyinLoading}
-                      collapsible
+                      collapsible={false}
+                      forceExpand
+                      fontSize={hotListFontSize}
                     />
                   </div>
                   <div>
                     <TrendingList
-                      title="公众号热文"
+                      title="公众号热文 TOP 20"
                       icon={PLATFORM_ICONS.gongzhonghao}
-                      items={gzh}
-                      defaultMaxItems={10}
+                      items={gzh.slice(0, 20)}
+                      defaultMaxItems={20}
                       showViewAll
                       viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
                       loading={gzhLoading}
-                      collapsible
+                      collapsible={false}
+                      forceExpand
+                      fontSize={hotListFontSize}
                     />
                   </div>
                 </div>
               ) : (
                 <>
                   <TrendingList
-                    title="微博热搜"
+                    title="微博热搜 TOP 20"
                     icon={PLATFORM_ICONS.weibo}
-                    items={weibo}
+                    items={weibo.slice(0, 20)}
                     defaultMaxItems={5}
                     showViewAll
                     viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
                     loading={weiboLoading}
                     collapsible
+                    fontSize={hotListFontSize}
                   />
                   <div className="mx-3 border-t border-border/30" />
                   <TrendingList
-                    title="抖音热搜"
+                    title="抖音热搜 TOP 20"
                     icon={PLATFORM_ICONS.douyin}
-                    items={douyin}
+                    items={douyin.slice(0, 20)}
                     defaultMaxItems={5}
                     showViewAll
                     viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
                     loading={douyinLoading}
                     collapsible
+                    fontSize={hotListFontSize}
                   />
                   <div className="mx-3 border-t border-border/30" />
                   <TrendingList
-                    title="公众号热文"
+                    title="公众号热文 TOP 20"
                     icon={PLATFORM_ICONS.gongzhonghao}
-                    items={gzh}
+                    items={gzh.slice(0, 20)}
                     defaultMaxItems={5}
                     showViewAll
                     viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
                     loading={gzhLoading}
                     collapsible
+                    fontSize={hotListFontSize}
                   />
                 </>
               )
@@ -459,8 +481,9 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
                 loading={weiboLoading}
                 collapsible
+                fontSize={hotListFontSize}
               />
-            ) : activeChannel === "douyin" ? (
+) : activeChannel === "douyin" ? (
               <TrendingList
                 title="抖音热搜 Top 50"
                 icon={PLATFORM_ICONS.douyin}
@@ -470,10 +493,11 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
                 loading={douyinLoading}
                 collapsible
+                fontSize={hotListFontSize}
               />
             ) : (
               <TrendingList
-                title="公众号热文 Top 50"
+title="公众号热文 Top 50"
                 icon={PLATFORM_ICONS.gongzhonghao}
                 items={gzh}
                 defaultMaxItems={20}
@@ -481,6 +505,7 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                 viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
                 loading={gzhLoading}
                 collapsible
+                fontSize={hotListFontSize}
               />
             )}
           </div>

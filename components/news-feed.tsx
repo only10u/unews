@@ -28,6 +28,7 @@ interface NewsFeedProps {
   onOpenAuthDialog?: () => void
   scoreThreshold?: number
   keywords?: string[]
+  tweetFontSize?: number
 }
 
 const PREVIEW_COUNT = 20
@@ -241,6 +242,7 @@ export function NewsFeed({
   onOpenAuthDialog,
   scoreThreshold = 0,
   keywords = [],
+  tweetFontSize = 14,
 }: NewsFeedProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -528,6 +530,7 @@ export function NewsFeed({
                       isNew={false}
                       isPinned={false}
                       aiSummaryEnabled={false}
+                      fontSize={tweetFontSize}
                     />
                   </div>
                 </div>
@@ -539,6 +542,7 @@ export function NewsFeed({
                   aiSummaryEnabled={aiSummaryEnabled}
                   onTogglePin={handleTogglePin}
                   onHide={handleHide}
+                  fontSize={tweetFontSize}
                 />
               )}
             </div>
