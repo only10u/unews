@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v25 - skeleton loading + free user full access
+// Force redeploy: v26 - remove audio popup + image retry + hot rank badge + remove AI button
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

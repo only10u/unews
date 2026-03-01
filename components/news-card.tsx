@@ -86,6 +86,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [imgRetry, setImgRetry] = useState(0)
   const [isExpanded, setIsExpanded] = useState(false)
   const [detailData, setDetailData] = useState<{
     detailContent: string
@@ -278,14 +279,24 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
         </div>
 
-        {/* ═══════ Row 2: Title (ALWAYS VISIBLE) ═══════ */}
+        {/* ═══════ Row 2: Hot rank + Title (ALWAYS VISIBLE) ═══════ */}
+        {item.platformRank && (
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
+              {"热搜 #" + item.platformRank}
+            </span>
+          </div>
+        )}
         <h3 className="font-bold text-foreground text-sm leading-snug mb-2 text-balance">
           {item.title}
         </h3>
 
-        {/* ═══════ Row 3: Content Text (ALWAYS VISIBLE - up to 3 lines) ═══════ */}
+        {/* ═══════ Row 3: Content Text (2-3 lines collapsed, full on expand) ═══════ */}
         {contentText && (
-          <p className="text-sm text-foreground/75 leading-relaxed line-clamp-3 mb-2.5">
+          <p className={cn(
+            "text-sm text-foreground/75 leading-relaxed mb-2.5",
+            !isExpanded && "line-clamp-3"
+          )}>
             {contentText}
           </p>
         )}
@@ -302,10 +313,16 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             >
               <AspectRatio ratio={16 / 9}>
                 <img
-                  src={imageUrl}
+                  src={imgRetry > 0 ? `${imageUrl}?retry=${imgRetry}` : imageUrl}
                   alt={item.title}
                   loading="lazy"
-                  onError={() => setImgError(true)}
+                  onError={() => {
+                    if (imgRetry < 2) {
+                      setImgRetry(r => r + 1)
+                    } else {
+                      setImgError(true)
+                    }
+                  }}
                   className="w-full h-full object-cover"
                 />
               </AspectRatio>
@@ -358,13 +375,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setShowAiSummary(!showAiSummary); if (!showAiSummary && !aiSummary) doFetchSummary() }}
-              className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors"
-            >
-              <Sparkles size={13} />
-              <span className="text-[11px]">AI</span>
-            </button>
             <button
               onClick={() => setIsExpanded(!isExpanded)}
               className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
