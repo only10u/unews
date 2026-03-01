@@ -84,6 +84,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
   const [detailData, setDetailData] = useState<{
     detailContent: string
     mediaUrl: string | null
