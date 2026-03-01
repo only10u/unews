@@ -155,10 +155,10 @@ function trendingToNewsItems(
     const timestamp = minutesAgo <= 60 ? `${minutesAgo}分钟前` : `${Math.floor(minutesAgo / 60)}小时前`
 
     // Use real enriched author data from API (prefer API author over generic platform default)
-    const authorName = item.topAuthor ? item.topAuthor : auth.name
-    const authorAvatar = item.topAuthorAvatar ? item.topAuthorAvatar : auth.avatar
+    const authorName = item.authorName || item.topAuthor || auth.name
+    const authorAvatar = item.authorAvatar || item.topAuthorAvatar || auth.avatar
     // Use real excerpt only - no fake fallback text
-    const summary = item.excerpt || ""
+    const summary = item.excerpt || item.summary || ""
 
     return {
       id: `${platform}-trending-${item.id}`,
