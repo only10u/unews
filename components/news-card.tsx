@@ -23,10 +23,8 @@ import {
   TrendingUp,
   TrendingDown,
   Flame,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react"
-import { AspectRatio } from "@/components/ui/aspect-ratio"
+
 
 interface NewsCardProps {
   item: NewsItem
@@ -86,8 +84,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [imgError, setImgError] = useState(false)
-  const [imgRetry, setImgRetry] = useState(0)
-  const [isExpanded, setIsExpanded] = useState(false)
   const [detailData, setDetailData] = useState<{
     detailContent: string
     mediaUrl: string | null
@@ -105,7 +101,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const avatarUrl = proxyImage(item.authorAvatar)
   const videoUrl = item.videoUrl
   const isVideo = item.mediaType === "video" || (videoUrl && /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(videoUrl))
-  const hasImage = !!imageUrl && !imgError
 
   // ─── Content text ───
   const contentText = item.detailContent || item.summary || ""
@@ -291,41 +286,31 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           {item.title}
         </h3>
 
-        {/* ═══════ Row 3: Content Text (2-3 lines collapsed, full on expand) ═══════ */}
+        {/* ═══════ Row 3: Content Text (2-3 lines) ═══════ */}
         {contentText && (
-          <p className={cn(
-            "text-sm text-foreground/75 leading-relaxed mb-2.5",
-            !isExpanded && "line-clamp-3"
-          )}>
+          <p className="text-sm leading-relaxed line-clamp-3 text-foreground/80 mb-2.5">
             {contentText}
           </p>
         )}
 
         {/* ═══════ Row 4: Image/Video Thumbnail (ALWAYS VISIBLE) ═══════ */}
-        {hasImage && (
-          <div className="mb-2.5 rounded-xl overflow-hidden border border-border/20 shadow-sm shadow-black/10">
+        {item.imageUrl && !imgError && (
+          <div className="w-full rounded-xl overflow-hidden mb-3" style={{ maxHeight: '240px' }}>
             <a
-              href={getPlatformSearchUrl(item.platform, item.title)}
+              href={item.url || getPlatformSearchUrl(item.platform, item.title)}
               target="_blank"
               rel="noopener noreferrer"
               className="block relative"
               onClick={(e) => e.stopPropagation()}
             >
-              <AspectRatio ratio={16 / 9}>
-                <img
-                  src={imgRetry > 0 ? `${imageUrl}?retry=${imgRetry}` : imageUrl}
-                  alt={item.title}
-                  loading="lazy"
-                  onError={() => {
-                    if (imgRetry < 2) {
-                      setImgRetry(r => r + 1)
-                    } else {
-                      setImgError(true)
-                    }
-                  }}
-                  className="w-full h-full object-cover"
-                />
-              </AspectRatio>
+              <img
+                src={imageUrl}
+                alt={item.title}
+                loading="lazy"
+                onError={() => setImgError(true)}
+                className="w-full object-cover"
+                style={{ maxHeight: '240px' }}
+              />
               {/* Video play overlay */}
               {isVideo && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
@@ -374,15 +359,14 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             </a>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setIsExpanded(!isExpanded)}
-              className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-              <span className="text-[11px]">{isExpanded ? "收起" : "详情"}</span>
-            </button>
-          </div>
+          <a
+            href={item.url || getPlatformSearchUrl(item.platform, item.title)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-primary/70 hover:text-primary flex items-center gap-1"
+          >
+            查看原文 <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
 
         {/* ═══════ AI Summary (toggleable) ═══════ */}
