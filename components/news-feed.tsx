@@ -276,21 +276,28 @@ export function NewsFeed({
   }, [])
 
   // SWR for trending data - 15 second refresh (detail fetching is triggered per-card on expand)
-  const { data: weiboTrending, mutate: mutateWeibo } = useSWR(
+  const { data: weiboTrending, isLoading: weiboLoading, mutate: mutateWeibo } = useSWR(
     "weibo",
     trendingFetcher,
     { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
-  const { data: douyinTrending, mutate: mutateDouyin } = useSWR(
+  const { data: douyinTrending, isLoading: douyinLoading, mutate: mutateDouyin } = useSWR(
     "douyin",
     trendingFetcher,
     { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
-  const { data: gzhTrending, mutate: mutateGzh } = useSWR(
+  const { data: gzhTrending, isLoading: gzhLoading, mutate: mutateGzh } = useSWR(
     "gzh",
     trendingFetcher,
     { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
+  
+  // Compute loading state based on active channel
+  const isLoading = activeChannel === "aggregate" 
+    ? (weiboLoading || douyinLoading || gzhLoading)
+    : activeChannel === "weibo" ? weiboLoading 
+    : activeChannel === "douyin" ? douyinLoading 
+    : gzhLoading
 
   // Convert trending to news items - use only real API data, no mock data
   const allItems = useMemo(() => {
@@ -468,6 +475,26 @@ export function NewsFeed({
       {/* News List */}
       <div ref={scrollRef} className="h-[calc(100vh-56px-48px-49px)] overflow-y-auto">
         <div>
+          {/* Skeleton loading state */}
+          {isLoading && displayedItems.length === 0 && (
+            <div className="space-y-2 p-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="p-4 rounded-xl border border-border/40 animate-pulse">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-9 h-9 rounded-full bg-secondary" />
+                    <div className="space-y-1">
+                      <div className="h-3 w-24 bg-secondary rounded" />
+                      <div className="h-2 w-16 bg-secondary rounded" />
+                    </div>
+                  </div>
+                  <div className="h-3 w-3/4 bg-secondary rounded mb-2" />
+                  <div className="h-3 w-full bg-secondary rounded mb-2" />
+                  <div className="h-40 w-full bg-secondary rounded-xl" />
+                </div>
+              ))}
+            </div>
+          )}
+          
           {displayedItems.map((entry, index) => (
             <div key={entry.item.id}>
               {/* Paywall after free preview */}

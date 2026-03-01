@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v24 - 5min cache + stale-while-revalidate for stable image loading
+// Force redeploy: v25 - skeleton loading + free user full access
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

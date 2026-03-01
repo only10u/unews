@@ -41,7 +41,7 @@ export default function HomePage() {
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [pushConfigOpen, setPushConfigOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
-  const [isAuthed, setIsAuthed] = useState(false)
+  const [isAuthed, setIsAuthed] = useState(true) // Temporarily: all users have full access
   const [aiSummaryEnabled, setAiSummaryEnabled] = useState(false)
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [keywords, setKeywords] = useState<string[]>([])
