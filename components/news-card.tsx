@@ -84,6 +84,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [imgError, setImgError] = useState(false)
+  const [avatarError, setAvatarError] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
   const [detailData, setDetailData] = useState<{
     detailContent: string
@@ -103,8 +104,8 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const videoUrl = item.videoUrl
   const isVideo = item.mediaType === "video" || (videoUrl && /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(videoUrl))
 
-  // ─── Content text ───
-  const contentText = item.detailContent || item.summary || ""
+  // ─── Content text - priority: summary > excerpt > detailContent > title ───
+  const contentText = item.summary || (item as any).excerpt || item.detailContent || ""
 
   // ─── Deep fetch on expand ───
   useEffect(() => {
@@ -205,26 +206,17 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         <div className="flex items-center gap-2.5 mb-2">
           {/* Avatar */}
           <div className="shrink-0 w-9 h-9 rounded-full overflow-hidden bg-secondary border border-border/30">
-            {avatarUrl ? (
+            {avatarUrl && !avatarError ? (
               <img
                 src={avatarUrl}
                 alt={item.author}
-                width={36}
-                height={36}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  // fallback to platform icon
-                  (e.target as HTMLImageElement).src = getPlatformIcon(item.platform)
-                }}
+                onError={() => setAvatarError(true)}
               />
             ) : (
-              <img
-                src={getPlatformIcon(item.platform)}
-                alt={getPlatformLabel(item.platform)}
-                width={36}
-                height={36}
-                className="w-full h-full object-cover p-1.5 opacity-60"
-              />
+              <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground">
+                {(item.author || item.authorAvatar || getPlatformLabel(item.platform))[0]}
+              </div>
             )}
           </div>
 

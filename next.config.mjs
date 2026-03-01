@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v27 - simplified image rendering + view original link
+// Force redeploy: v28 - fix avatar fallback + content text priority
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
