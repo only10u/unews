@@ -364,15 +364,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
         </div>
 
         <ScrollArea className="h-full">
-          {!isAuthed && (
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              <Lock size={28} className="text-primary mb-3" />
-              <h3 className="text-sm font-bold text-foreground mb-2">排行榜仅限付费用户</h3>
-              <p className="text-xs text-muted-foreground mb-1">输入密钥解锁热搜排行榜、推文推送等全部功能。</p>
-              <p className="text-[10px] text-muted-foreground/60">免费用户可使用底部币价监控功能。</p>
-            </div>
-          )}
-          {isAuthed && <div className="py-2 pl-2">
+          {/* Paywall temporarily disabled - show all content */}
+          <div className="py-2 pl-2">
             {/* Width indicator hint */}
             {sidebarWidth > MIN_WIDTH && sidebarWidth < WIDE_THRESHOLD && (
               <div className="text-center text-[10px] text-muted-foreground/50 pb-1">
@@ -490,7 +483,7 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                 collapsible
               />
             )}
-          </div>}
+          </div>
         </ScrollArea>
       </aside>
     </>

@@ -400,7 +400,7 @@ export function NewsFeed({
   const displayedItems = isExpanded ? flatDisplayItems : flatDisplayItems.slice(0, PREVIEW_COUNT)
   const hasMore = flatDisplayItems.length > PREVIEW_COUNT
   const platformIcon = getPlatformIcon(activeChannel)
-  const showPaywall = !isAuthed
+  const showPaywall = false // Temporarily disabled: no paywall
 
   return (
     <div className="flex-1 min-w-0">

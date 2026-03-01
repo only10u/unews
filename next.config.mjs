@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v19 - crawler push API + free user access
+// Force redeploy: v20 - remove all paywalls completely
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
