@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v21 - direct proxy to domestic crawler server
+// Force redeploy: v22 - remove mockNewsData, use only real API data
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

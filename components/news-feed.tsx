@@ -6,7 +6,6 @@ import {
   type Platform,
   type NewsItem,
   type TrendingItem,
-  mockNewsData,
   PLATFORM_ICONS,
 } from "@/lib/mock-data"
 import { NewsCard } from "./news-card"
@@ -293,24 +292,21 @@ export function NewsFeed({
     { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
   )
 
-  // Convert trending to news items
+  // Convert trending to news items - use only real API data, no mock data
   const allItems = useMemo(() => {
     const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo")
     const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin")
     const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao")
 
-    // Also merge in any existing mock data for variety
-    const mockItems = [...mockNewsData]
-
     let combined: NewsItem[]
     if (activeChannel === "aggregate") {
-      combined = [...weiboNews, ...douyinNews, ...gzhNews, ...mockItems]
+      combined = [...weiboNews, ...douyinNews, ...gzhNews]
     } else if (activeChannel === "weibo") {
-      combined = [...weiboNews, ...mockItems.filter((i) => i.platform === "weibo")]
+      combined = weiboNews
     } else if (activeChannel === "douyin") {
-      combined = [...douyinNews, ...mockItems.filter((i) => i.platform === "douyin")]
+      combined = douyinNews
     } else {
-      combined = [...gzhNews, ...mockItems.filter((i) => i.platform === "gongzhonghao")]
+      combined = gzhNews
     }
 
     return combined
@@ -425,7 +421,7 @@ export function NewsFeed({
             <span className="text-[11px] text-muted-foreground ml-1">
               {"共 " + totalCount + " 条"}
             </span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="实时刷新中" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="��时刷新中" />
           </div>
 
           <div className="flex items-center gap-2">
