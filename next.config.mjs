@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v22 - remove mockNewsData, use only real API data
+// Force redeploy: v23 - fix API routes to return TrendingItem format
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
