@@ -1,5 +1,5 @@
 /** @type {import('next').NextConfig} */
-// Force redeploy: v29 - remove fake summary fallback in trendingToNewsItems
+// Force redeploy: v30 - fix AspectRatio removal in expanded detail area
 const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,

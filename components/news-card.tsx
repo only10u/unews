@@ -422,14 +422,13 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             {/* Deep-scraped media */}
             {detailData?.mediaUrl && detailData.mediaType === "image" && (
               <div className="rounded-lg overflow-hidden border border-border/20">
-                <AspectRatio ratio={16 / 9}>
-                  <img
-                    src={proxyImage(detailData.mediaUrl) || detailData.mediaUrl}
-                    alt={item.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                  />
-                </AspectRatio>
+                <img
+                  src={proxyImage(detailData.mediaUrl) || detailData.mediaUrl}
+                  alt={item.title}
+                  loading="lazy"
+                  className="w-full object-cover"
+                  style={{ maxHeight: '240px' }}
+                />
               </div>
             )}
 
