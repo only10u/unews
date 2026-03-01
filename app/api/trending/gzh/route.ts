@@ -2,12 +2,33 @@ import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const res = await fetch("http://1.12.248.87:3001/api/trending/douyin", {
-      next: { revalidate: 30 },
+    const res = await fetch("http://1.12.248.87:3001/api/trending/gzh", {
+      next: { revalidate: 60 },
       signal: AbortSignal.timeout(15000),
     })
     if (!res.ok) throw new Error(`upstream ${res.status}`)
-    const data = await res.json()
+    const raw = await res.json()
+    const data = raw.map((item: any, i: number) => ({
+      id: `gzh-${item.rank}-${Date.now()}`,
+      platform: "gongzhonghao",
+      author: item.authorName || "公众号",
+      authorAvatar: item.authorAvatar || "",
+      authorVerified: false,
+      authorFollowers: "",
+      title: item.title,
+      summary: item.excerpt || "",
+      score: Math.max(9.5 - i * 0.15, 3.0),
+      scoreReason: `公众号热文第${item.rank}名`,
+      tags: ["公众号"],
+      likes: Math.floor(item.hotValue / 100),
+      reposts: Math.floor(item.hotValue / 300),
+      comments: Math.floor(item.hotValue / 500),
+      timestamp: "刚刚",
+      url: item.url,
+      imageUrl: item.imageUrl || undefined,
+      mediaType: item.mediaType || "image",
+      platformRank: item.rank,
+    }))
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
