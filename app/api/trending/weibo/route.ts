@@ -7,7 +7,28 @@ export async function GET() {
       signal: AbortSignal.timeout(15000),
     })
     if (!res.ok) throw new Error(`upstream ${res.status}`)
-    const data = await res.json()
+    const raw = await res.json()
+    const data = raw.map((item: any, i: number) => ({
+      id: `weibo-${item.rank}-${Date.now()}`,
+      platform: "weibo",
+      author: item.authorName || "微博热搜",
+      authorAvatar: item.authorAvatar || "",
+      authorVerified: false,
+      authorFollowers: "",
+      title: item.title,
+      summary: item.excerpt || "",
+      score: Math.max(9.5 - i * 0.15, 3.0),
+      scoreReason: `微博热搜第${item.rank}名`,
+      tags: ["微博热搜"],
+      likes: Math.floor(item.hotValue / 100),
+      reposts: Math.floor(item.hotValue / 300),
+      comments: Math.floor(item.hotValue / 500),
+      timestamp: "刚刚",
+      url: item.url,
+      imageUrl: item.imageUrl || undefined,
+      mediaType: item.mediaType || "image",
+      platformRank: item.rank,
+    }))
     return NextResponse.json(data)
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
