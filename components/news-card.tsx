@@ -387,8 +387,8 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         )}
       </div>
 
-        {/* ═══════ AI Summary (toggleable) ═══════ */}
-        {showAiSummary && (
+      {/* ═══════ AI Summary (toggleable) ═══════ */}
+      {showAiSummary && (
           <div className="mt-3 p-3 rounded-lg bg-primary/5 border border-primary/15 relative">
             <button
               onClick={() => setShowAiSummary(false)}
@@ -405,96 +405,95 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 <Loader2 size={14} className="animate-spin" />
                 <span>{"正在生成智能总结..."}</span>
               </div>
-            ) : (
-              <p className="text-sm text-foreground/80 leading-relaxed">{aiSummary}</p>
-            )}
-          </div>
-        )}
-
-        {/* ═══════ Expanded: Deep detail (on click "详情") ═══════ */}
-        <div
-          className={cn(
-            "overflow-hidden transition-all duration-300 ease-in-out",
-            isExpanded ? "max-h-[800px] opacity-100 mt-3" : "max-h-0 opacity-0"
+          ) : (
+            <p className="text-sm text-foreground/80 leading-relaxed">{aiSummary}</p>
           )}
-        >
-          <div className="space-y-3">
-            {/* Loading skeleton */}
-            {isLoadingDetail && (
-              <div className="p-3 rounded-lg bg-muted/30 border border-border/20 space-y-2">
-                <div className="h-3 w-3/4 bg-secondary rounded animate-pulse" />
-                <div className="h-3 w-full bg-secondary rounded animate-pulse" />
-                <div className="h-3 w-1/2 bg-secondary rounded animate-pulse" />
-              </div>
-            )}
+        </div>
+      )}
 
-            {/* Deep-scraped detail content */}
-            {detailData?.detailContent && (
-              <div className="p-3 rounded-lg bg-muted/40 border border-border/20">
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <Pin size={10} className="text-primary" />
-                  <span className="text-[10px] font-bold text-primary">置顶博文</span>
-                  {detailData.authorName && (
-                    <span className="text-[10px] text-muted-foreground">{"@" + detailData.authorName}</span>
-                  )}
-                </div>
-                <p className="text-sm text-foreground/85 leading-relaxed">
-                  {detailData.detailContent}
-                </p>
-              </div>
-            )}
+      {/* ═══════ Expanded: Deep detail (on click "详情") ═══════ */}
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-300 ease-in-out",
+          isExpanded ? "max-h-[800px] opacity-100 mt-3" : "max-h-0 opacity-0"
+        )}
+      >
+        <div className="space-y-3">
+          {/* Loading skeleton */}
+          {isLoadingDetail && (
+            <div className="p-3 rounded-lg bg-muted/30 border border-border/20 space-y-2">
+              <div className="h-3 w-3/4 bg-secondary rounded animate-pulse" />
+              <div className="h-3 w-full bg-secondary rounded animate-pulse" />
+              <div className="h-3 w-1/2 bg-secondary rounded animate-pulse" />
+            </div>
+          )}
 
-            {/* Deep-scraped media */}
-            {detailData?.mediaUrl && detailData.mediaType === "image" && (
+          {/* Deep-scraped detail content */}
+          {detailData?.detailContent && (
+            <div className="p-3 rounded-lg bg-muted/40 border border-border/20">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Pin size={10} className="text-primary" />
+                <span className="text-[10px] font-bold text-primary">置顶博文</span>
+                {detailData.authorName && (
+                  <span className="text-[10px] text-muted-foreground">{"@" + detailData.authorName}</span>
+                )}
+              </div>
+              <p className="text-sm text-foreground/85 leading-relaxed">
+                {detailData.detailContent}
+              </p>
+            </div>
+          )}
+
+          {/* Deep-scraped media */}
+          {detailData?.mediaUrl && detailData.mediaType === "image" && (
+            <div className="rounded-lg overflow-hidden border border-border/20">
+              <img
+                src={proxyImage(detailData.mediaUrl) || detailData.mediaUrl}
+                alt={item.title}
+                loading="lazy"
+                className="w-full object-cover"
+                style={{ maxHeight: '240px' }}
+              />
+            </div>
+          )}
+
+          {detailData?.mediaUrl && detailData.mediaType === "video" && (
+            /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(detailData.mediaUrl) ? (
               <div className="rounded-lg overflow-hidden border border-border/20">
-                <img
-                  src={proxyImage(detailData.mediaUrl) || detailData.mediaUrl}
-                  alt={item.title}
-                  loading="lazy"
-                  className="w-full object-cover"
-                  style={{ maxHeight: '240px' }}
+                <video
+                  src={detailData.mediaUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="w-full"
+                  poster={imageUrl}
                 />
               </div>
-            )}
-
-            {detailData?.mediaUrl && detailData.mediaType === "video" && (
-              /\.(mp4|webm|ogg|m3u8)(\?|$)/i.test(detailData.mediaUrl) ? (
-                <div className="rounded-lg overflow-hidden border border-border/20">
-                  <video
-                    src={detailData.mediaUrl}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    className="w-full"
-                    poster={imageUrl}
-                  />
-                </div>
-              ) : (
-                <a
-                  href={detailData.mediaUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/20 text-sm text-primary hover:bg-muted/50 transition-colors"
-                >
-                  <Play size={14} />
-                  {"点击观看视频"}
-                </a>
-              )
-            )}
-
-            {/* Error fallback */}
-            {detailError && !detailData && (
+            ) : (
               <a
-                href={getPlatformSearchUrl(item.platform, item.title)}
+                href={detailData.mediaUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/20 text-sm text-primary hover:bg-muted/50 transition-colors"
               >
-                <ExternalLink size={14} />
-                {"点击跳转原文查看详情"}
+                <Play size={14} />
+                {"点击观看视频"}
               </a>
-            )}
-          </div>
+            )
+          )}
+
+          {/* Error fallback */}
+          {detailError && !detailData && (
+            <a
+              href={getPlatformSearchUrl(item.platform, item.title)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/20 text-sm text-primary hover:bg-muted/50 transition-colors"
+            >
+              <ExternalLink size={14} />
+              {"点击跳转原文查看详情"}
+            </a>
+          )}
         </div>
       </div>
     </article>
