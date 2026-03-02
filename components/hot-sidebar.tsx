@@ -286,6 +286,13 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
   const startX = useRef(0)
   const startWidth = useRef(DEFAULT_WIDTH)
   
+  // Carousel拖动相关状态（用于touch/mouse滑动切换）
+  const carouselRef = useRef<HTMLDivElement>(null)
+  const [carouselIndex, setCarouselIndex] = useState(0)
+  const touchStartX = useRef(0)
+  const touchDeltaX = useRef(0)
+  const [isDraggingCarousel, setIsDraggingCarousel] = useState(false)
+  
   // 辅助函数：根据列数获取目标宽度
   const getSnapWidth = useCallback((cols: number) => {
     if (cols === 3) return SNAP_WIDTH_3COL
