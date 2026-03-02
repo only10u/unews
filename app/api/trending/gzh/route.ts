@@ -10,23 +10,31 @@ export async function GET() {
     if (!res.ok) throw new Error(`upstream ${res.status}`)
     const raw = await res.json()
     
+    // 调试日志：打印上游API返回的第一条原始数据的完整字段
+    if (raw && raw[0]) {
+      console.log('[v0] [gzh raw item #1]', JSON.stringify(raw[0], null, 2))
+    }
+    
     // Map to NewsItem format expected by frontend
+    // 扩展字段映射，覆盖公众号API可能的各种字段名
     const data = raw.map((item: any, i: number) => ({
       id: `g${i + 1}`,
-      title: item.title || "",
-      hotValue: item.hotValue || 0,
-      url: item.url || "",
-      imageUrl: item.imageUrl || "",
+      title: item.title || item.name || "",
+      hotValue: item.hotValue || item.reading_count || item.read_num || 0,
+      url: item.url || item.link || item.content_url || "",
+      // 图片：覆盖多种可能的字段名
+      imageUrl: item.imageUrl || item.cover || item.pic_url || item.thumb_url || item.head_img_url || "",
       videoUrl: item.videoUrl || "",
       mediaType: item.mediaType || "image",
       isBurst: item.isBurst || false,
       rankDelta: item.rankDelta || 0,
       prevRank: item.prevRank,
-      // NewsItem format fields - 多字段fallback确保正文显示
-      author: item.authorName || item.topAuthor || item.author || "公众号精选",
-      authorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
-      // 公众号正文：优先excerpt，其次summary/digest/description/content
-      summary: item.excerpt || item.summary || item.digest || item.description || item.content || "",
+      // 作者：覆盖多种可能的字段名
+      author: item.author || item.nickname || item.account_name || item.authorName || item.topAuthor || item.source || "公众号精选",
+      // 头像：覆盖多种可能的字段名
+      authorAvatar: item.round_head_img || item.author_icon || item.authorAvatar || item.topAuthorAvatar || item.logo || item.head_img || "",
+      // 正文：覆盖更多可能的字段名
+      summary: item.digest || item.abstract || item.desc || item.description || item.content_intro || item.content || item.summary || item.excerpt || item.intro || item.text || "",
       platformRank: item.rank || i + 1,
     }))
     

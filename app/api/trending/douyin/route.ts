@@ -10,24 +10,34 @@ export async function GET() {
     if (!res.ok) throw new Error(`upstream ${res.status}`)
     const raw = await res.json()
     
+    // 调试日志：打印上游API返回的第一条原始数据的完整字段
+    if (raw && raw[0]) {
+      console.log('[v0] [douyin raw item #1]', JSON.stringify(raw[0], null, 2))
+    }
+    
     // Map to NewsItem format expected by frontend
+    // 扩展字段映射，覆盖抖音API可能的各种字段名
     const data = raw.map((item: any, i: number) => ({
       id: `d${i + 1}`,
-      title: item.title || "",
-      hotValue: item.hotValue || 0,
-      url: item.url || "",
-      imageUrl: item.imageUrl || "",
-      videoUrl: item.videoUrl || "",
+      title: item.title || item.word || item.hot_sentence || "",
+      hotValue: item.hotValue || item.hot_value || item.view_count || 0,
+      url: item.url || item.link || item.video_url || "",
+      // 封面图：优先从video对象取，然后是各种可能的字段名
+      imageUrl: item.video?.cover?.url_list?.[0] || item.video?.dynamic_cover?.url_list?.[0] || 
+                item.cover || item.imageUrl || item.pic || item.poster || "",
+      videoUrl: item.videoUrl || item.video?.play_addr?.url_list?.[0] || item.play_url || "",
       mediaType: item.mediaType || "video",
-      isBurst: item.isBurst || false,
-      rankDelta: item.rankDelta || 0,
-      prevRank: item.prevRank,
-      // NewsItem format fields - 多字段fallback确保正文显示
-      author: item.authorName || item.topAuthor || item.author || "抖音热榜",
-      authorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
-      // 抖音正文：优先excerpt，其次summary/description
-      summary: item.excerpt || item.summary || item.description || "",
-      platformRank: item.rank || i + 1,
+      isBurst: item.isBurst || item.is_hot || false,
+      rankDelta: item.rankDelta || item.rank_diff || 0,
+      prevRank: item.prevRank || item.prev_rank,
+      // 作者：优先从author对象取
+      author: item.author?.nickname || item.author?.unique_id || item.authorName || item.topAuthor || item.author || item.nick || "抖音热榜",
+      // 头像：优先从author对象取
+      authorAvatar: item.author?.avatar?.url_list?.[0] || item.author?.avatar_thumb?.url_list?.[0] || 
+                    item.authorAvatar || item.topAuthorAvatar || item.avatar || "",
+      // 正文：覆盖多种可能的字段名
+      summary: item.desc || item.description || item.excerpt || item.summary || item.content || item.sentence_tag || "",
+      platformRank: item.rank || item.position || i + 1,
     }))
     
     console.log("[DOUYIN-API] returning", data.length, "items, sample:", JSON.stringify({

@@ -320,21 +320,25 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             summary?: string;
             detailContent?: string;
             platformRank?: number;
+            // 扩展：兼容更多可能的字段名
+            nickname?: string;
+            avatar?: string;
+            user?: { screen_name?: string; profile_image_url?: string; avatar?: string };
           }, i: number) => ({
             id: `${platform[0]}${i + 1}`,
             rank: item.platformRank || item.rank || i + 1,
             title: item.title || "",
             hotValue: item.hotValue || 0,
             url: item.url || "",
-            // Compatible with all possible field names from different API formats
-            // 多字段fallback确保正文显示
-            excerpt: item.excerpt || item.summary || (item as any).digest || (item as any).description || (item as any).content || "",
-            imageUrl: item.imageUrl || item.imageurl || "",
+            // 正文：覆盖更多可能的字段名
+            excerpt: item.summary || item.excerpt || (item as any).digest || (item as any).description || (item as any).content || (item as any).text || (item as any).desc || "",
+            imageUrl: item.imageUrl || item.imageurl || (item as any).cover || (item as any).pic || "",
             videoUrl: item.videoUrl || "",
             mediaType: item.mediaType,
-            // 兼容所有可能的作者字段名：author (API直接返回) > authorName > topAuthor
-            topAuthor: item.author || item.authorName || item.topAuthor || "",
-            topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
+            // 作者：覆盖更多可能的字段名，包括user对象
+            topAuthor: item.author || item.authorName || item.topAuthor || item.nickname || item.user?.screen_name || "",
+            // 头像：覆盖更多可能的字段名，包括user对象
+            topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || item.avatar || item.user?.profile_image_url || item.user?.avatar || "",
             detailContent: item.detailContent || "",
           })
         )
