@@ -24,6 +24,7 @@ import useSWR from "swr"
 interface NewsFeedProps {
   activeChannel: Platform
   aiSummaryEnabled?: boolean
+  aiDenoiseEnabled?: boolean  // 新增：AI去噪开关
   isAuthed?: boolean
   onOpenAuthDialog?: () => void
   scoreThreshold?: number
@@ -36,6 +37,49 @@ const FREE_PREVIEW = 999 // Temporarily disabled: allow all content for free use
 const W1 = 0.5  // initial weight factor
 const W2 = 0.35 // freshness factor
 const W3 = 0.15 // burst bonus factor
+
+// 娱乐八卦/明星/饭圈关键词 - 用于客户端去噪过滤
+const ENTERTAINMENT_KEYWORDS = [
+  // 明星艺人通用词
+  "明星", "艺人", "偶像", "爱豆", "idol", "演员", "歌手", "练习生", "出道",
+  // 饭圈追星词汇
+  "饭圈", "粉丝", "应援", "打call", "控评", "反黑", "超话", "pick", "出圈",
+  "安利", "入坑", "脱粉", "回踩", "黑粉", "私生", "站姐", "代拍", "接机",
+  "刷榜", "做数据", "营业", "塌房", "糊了", "翻红", "c位", "资源咖",
+  // 娱乐八卦词汇  
+  "恋情", "分手", "官宣", "领证", "离婚", "出轨", "劈腿", "小三", "绯闻",
+  "热恋", "约会", "同框", "合体", "cp", "嗑cp", "锁死", "be了", "he",
+  // 影视剧综相关
+  "电视剧", "电影", "综艺", "上映", "杀青", "开机", "定档", "收视率",
+  "票房", "路演", "首映", "点映", "番位", "主演", "客串", "搭档",
+  "真人秀", "选秀", "淘汰", "晋级", "导师", "学员", "成团", "出道夜",
+  // 娱乐圈事件
+  "红毯", "颁奖", "典礼", "封后", "影帝", "影后", "视帝", "视后",
+  "提名", "获奖", "内娱", "外娱", "韩娱", "日娱", "港圈",
+]
+
+// 强特征词：单独出现即过滤
+const STRONG_ENTERTAINMENT_KEYWORDS = ["饭圈", "追星", "爱豆", "应援", "控评", "超话", "塌房", "刷榜"]
+
+/** 检测内容是否为娱乐八卦/明星饭圈相关 */
+function isEntertainmentContent(title: string, content: string = ""): boolean {
+  const text = (title + " " + content).toLowerCase()
+  
+  // 检查是否包含娱乐关键词
+  const matchedKeywords = ENTERTAINMENT_KEYWORDS.filter(kw => text.includes(kw.toLowerCase()))
+  
+  // 如果匹配了2个或以上关键词，认定为娱乐内容
+  if (matchedKeywords.length >= 2) {
+    return true
+  }
+  
+  // 单个强特征关键词也过滤
+  if (STRONG_ENTERTAINMENT_KEYWORDS.some(kw => text.includes(kw))) {
+    return true
+  }
+  
+  return false
+}
 
 function getPlatformLabel(p: Platform): string {
   switch (p) {
@@ -238,6 +282,7 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
 export function NewsFeed({
   activeChannel,
   aiSummaryEnabled,
+  aiDenoiseEnabled = true,  // 默认启用去噪
   isAuthed,
   onOpenAuthDialog,
   scoreThreshold = 0,
@@ -371,9 +416,17 @@ export function NewsFeed({
   }, [mutateWeibo, mutateDouyin, mutateGzh])
 
   // Process with dynamic priority ranking (user-controlled pinning only)
-  const { displayItems: flatDisplayItems, totalCount } = useMemo(() => {
+  const { displayItems: flatDisplayItems, totalCount, filteredCount } = useMemo(() => {
     // Filter hidden items
     let all = deduplicateNews(allItems).filter((item) => !hiddenIds.has(item.id))
+
+    // AI去噪过滤：过滤娱乐八卦、明星动态、饭圈追星、影视剧综相关内容
+    let filtered = 0
+    if (aiDenoiseEnabled) {
+      const beforeCount = all.length
+      all = all.filter((item) => !isEntertainmentContent(item.title, item.summary))
+      filtered = beforeCount - all.length
+    }
 
     // Apply score threshold
     if (scoreThreshold > 0) {
@@ -399,8 +452,8 @@ export function NewsFeed({
       items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
     }
 
-    return { displayItems: items, totalCount: all.length }
-  }, [allItems, scoreThreshold, pinnedIds, hiddenIds])
+    return { displayItems: items, totalCount: all.length, filteredCount: filtered }
+  }, [allItems, scoreThreshold, pinnedIds, hiddenIds, aiDenoiseEnabled])
 
   const displayedItems = isExpanded ? flatDisplayItems : flatDisplayItems.slice(0, PREVIEW_COUNT)
   const hasMore = flatDisplayItems.length > PREVIEW_COUNT
@@ -430,7 +483,12 @@ export function NewsFeed({
             <span className="text-[11px] text-muted-foreground ml-1">
               {"共 " + totalCount + " 条"}
             </span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="��时刷新中" />
+            {aiDenoiseEnabled && filteredCount > 0 && (
+              <span className="text-[10px] text-orange-500/80 ml-1" title="AI智能去噪已过滤娱乐八卦内容">
+                {"(已去噪 " + filteredCount + " 条)"}
+              </span>
+            )}
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="实时刷新中" />
           </div>
 
           <div className="flex items-center gap-2">

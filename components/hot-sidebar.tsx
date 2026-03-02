@@ -194,20 +194,23 @@ function TrendingList({
 
       {/* Items */}
       <div>
-        {displayItems.map((item) => {
-          const delta = item.rankDelta ?? 0
-          return (
-            <a
-              key={item.id}
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "flex items-center gap-2 px-3 py-1.5 hover:bg-accent/40 transition-all group/item",
-                getRankBg(item.rank),
-                changedIds.has(item.id) && "animate-flash-rank"
-              )}
-            >
+{displayItems.map((item) => {
+  const delta = item.rankDelta ?? 0
+  // 根据排名变化计算背景色：上升显示淡红，下降显示淡绿
+  const rankChangeBg = delta > 0 ? "bg-red-500/[0.04]" : delta < 0 ? "bg-emerald-500/[0.04]" : ""
+  return (
+  <a
+  key={item.id}
+  href={item.url}
+  target="_blank"
+  rel="noopener noreferrer"
+  className={cn(
+  "flex items-center gap-2 px-3 py-1.5 hover:bg-accent/40 transition-all group/item",
+  getRankBg(item.rank),
+  rankChangeBg,
+  changedIds.has(item.id) && "animate-flash-rank"
+  )}
+  >
               <span className="w-5 text-center text-xs font-bold shrink-0" style={{ color: getRankColor(item.rank) }}>
                 {item.rank}
               </span>
@@ -391,10 +394,10 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                 <div className="grid grid-cols-3 gap-0 h-full">
                   <div className="border-r border-border/30">
                     <TrendingList
-                      title="微博热搜 TOP 20"
+                      title="微博热搜 TOP 50"
                       icon={PLATFORM_ICONS.weibo}
-                      items={weibo.slice(0, 20)}
-                      defaultMaxItems={20}
+                      items={weibo.slice(0, 50)}
+                      defaultMaxItems={50}
                       showViewAll
                       viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
                       loading={weiboLoading}
@@ -405,10 +408,10 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                   </div>
                   <div className="border-r border-border/30">
                     <TrendingList
-                      title="抖音热搜 TOP 20"
+                      title="抖音热搜 TOP 50"
                       icon={PLATFORM_ICONS.douyin}
-                      items={douyin.slice(0, 20)}
-                      defaultMaxItems={20}
+                      items={douyin.slice(0, 50)}
+                      defaultMaxItems={50}
                       showViewAll
                       viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
                       loading={douyinLoading}
@@ -419,10 +422,10 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                   </div>
                   <div>
                     <TrendingList
-                      title="公众号热文 TOP 20"
+                      title="公众号热文 TOP 50"
                       icon={PLATFORM_ICONS.gongzhonghao}
-                      items={gzh.slice(0, 20)}
-                      defaultMaxItems={20}
+                      items={gzh.slice(0, 50)}
+                      defaultMaxItems={50}
                       showViewAll
                       viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
                       loading={gzhLoading}
@@ -435,10 +438,10 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
               ) : (
                 <>
                   <TrendingList
-                    title="微博热搜 TOP 20"
+                    title="微博热搜 TOP 50"
                     icon={PLATFORM_ICONS.weibo}
-                    items={weibo.slice(0, 20)}
-                    defaultMaxItems={5}
+                    items={weibo.slice(0, 50)}
+                    defaultMaxItems={10}
                     showViewAll
                     viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
                     loading={weiboLoading}
@@ -447,10 +450,10 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                   />
                   <div className="mx-3 border-t border-border/30" />
                   <TrendingList
-                    title="抖音热搜 TOP 20"
+                    title="抖音热搜 TOP 50"
                     icon={PLATFORM_ICONS.douyin}
-                    items={douyin.slice(0, 20)}
-                    defaultMaxItems={5}
+                    items={douyin.slice(0, 50)}
+                    defaultMaxItems={10}
                     showViewAll
                     viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
                     loading={douyinLoading}
@@ -459,10 +462,10 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                   />
                   <div className="mx-3 border-t border-border/30" />
                   <TrendingList
-                    title="公众号热文 TOP 20"
+                    title="公众号热文 TOP 50"
                     icon={PLATFORM_ICONS.gongzhonghao}
-                    items={gzh.slice(0, 20)}
-                    defaultMaxItems={5}
+                    items={gzh.slice(0, 50)}
+                    defaultMaxItems={10}
                     showViewAll
                     viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
                     loading={gzhLoading}
@@ -472,41 +475,128 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                 </>
               )
             ) : activeChannel === "weibo" ? (
-              <TrendingList
-                title="微博热搜 Top 50"
-                icon={PLATFORM_ICONS.weibo}
-                items={weibo}
-                defaultMaxItems={20}
-                showViewAll
-                viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
-                loading={weiboLoading}
-                collapsible
-                fontSize={hotListFontSize}
-              />
-) : activeChannel === "douyin" ? (
-              <TrendingList
-                title="抖音热搜 Top 50"
-                icon={PLATFORM_ICONS.douyin}
-                items={douyin}
-                defaultMaxItems={20}
-                showViewAll
-                viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
-                loading={douyinLoading}
-                collapsible
-                fontSize={hotListFontSize}
-              />
+              /* 微博板块：支持横向切换查看其他平台 */
+              <>
+                <TrendingList
+                  title="微博热搜 Top 50"
+                  icon={PLATFORM_ICONS.weibo}
+                  items={weibo.slice(0, 50)}
+                  defaultMaxItems={25}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
+                  loading={weiboLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+                <div className="mx-3 my-2 border-t border-border/30" />
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] text-muted-foreground">其他平台热搜</span>
+                </div>
+                <TrendingList
+                  title="抖音热搜"
+                  icon={PLATFORM_ICONS.douyin}
+                  items={douyin.slice(0, 50)}
+                  defaultMaxItems={5}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
+                  loading={douyinLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+                <TrendingList
+                  title="公众号热文"
+                  icon={PLATFORM_ICONS.gongzhonghao}
+                  items={gzh.slice(0, 50)}
+                  defaultMaxItems={5}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
+                  loading={gzhLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+              </>
+            ) : activeChannel === "douyin" ? (
+              /* 抖音板块：支持横向切换查看其他平台 */
+              <>
+                <TrendingList
+                  title="抖音热搜 Top 50"
+                  icon={PLATFORM_ICONS.douyin}
+                  items={douyin.slice(0, 50)}
+                  defaultMaxItems={25}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
+                  loading={douyinLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+                <div className="mx-3 my-2 border-t border-border/30" />
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] text-muted-foreground">其他平台热搜</span>
+                </div>
+                <TrendingList
+                  title="微博热搜"
+                  icon={PLATFORM_ICONS.weibo}
+                  items={weibo.slice(0, 50)}
+                  defaultMaxItems={5}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
+                  loading={weiboLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+                <TrendingList
+                  title="公众号热文"
+                  icon={PLATFORM_ICONS.gongzhonghao}
+                  items={gzh.slice(0, 50)}
+                  defaultMaxItems={5}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
+                  loading={gzhLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+              </>
             ) : (
-              <TrendingList
-title="公众号热文 Top 50"
-                icon={PLATFORM_ICONS.gongzhonghao}
-                items={gzh}
-                defaultMaxItems={20}
-                showViewAll
-                viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
-                loading={gzhLoading}
-                collapsible
-                fontSize={hotListFontSize}
-              />
+              /* 公众号板块：支持横向切换查看其他平台 */
+              <>
+                <TrendingList
+                  title="公众号热文 Top 50"
+                  icon={PLATFORM_ICONS.gongzhonghao}
+                  items={gzh.slice(0, 50)}
+                  defaultMaxItems={25}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
+                  loading={gzhLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+                <div className="mx-3 my-2 border-t border-border/30" />
+                <div className="px-3 py-1.5">
+                  <span className="text-[10px] text-muted-foreground">其他平台热搜</span>
+                </div>
+                <TrendingList
+                  title="微博热搜"
+                  icon={PLATFORM_ICONS.weibo}
+                  items={weibo.slice(0, 50)}
+                  defaultMaxItems={5}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
+                  loading={weiboLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+                <TrendingList
+                  title="抖音热搜"
+                  icon={PLATFORM_ICONS.douyin}
+                  items={douyin.slice(0, 50)}
+                  defaultMaxItems={5}
+                  showViewAll
+                  viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
+                  loading={douyinLoading}
+                  collapsible
+                  fontSize={hotListFontSize}
+                />
+              </>
             )}
           </div>
         </ScrollArea>

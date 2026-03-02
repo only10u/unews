@@ -6,7 +6,6 @@ import {
   type NewsItem,
   getScoreLevel,
   getScoreColor,
-  getScoreLabel,
   formatNumber,
   PLATFORM_ICONS,
 } from "@/lib/mock-data"
@@ -151,14 +150,28 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
     finally { setIsLoadingSummary(false) }
   }
 
-  // Rank badge
+  // Rank badge and background color based on rank change
   const delta = item.rankDelta ?? 0
+  
+  // 根据排名变化计算背景色：上升显示淡红，下降显示淡绿
+  const getRankChangeBackground = (): string => {
+    if (delta > 0) {
+      // 排名上升 - 淡红色背景
+      return "bg-red-500/[0.04]"
+    } else if (delta < 0) {
+      // 排名下降 - 淡绿色背景  
+      return "bg-emerald-500/[0.04]"
+    }
+    return ""
+  }
+  const rankChangeBackground = getRankChangeBackground()
+  
   const rankBadge = item.platformRank ? (
-    <span className="inline-flex items-center gap-1 text-[10px] font-mono">
+    <span className="inline-flex items-center gap-1 text-[11px] font-mono">
       <span className="text-muted-foreground">{getPlatformShort(item.platform)}</span>
       <span className="font-bold text-foreground">{"#" + item.platformRank}</span>
-      {delta > 0 && <span className="inline-flex items-center text-red-500 font-bold"><TrendingUp size={10} />{delta}</span>}
-      {delta < 0 && <span className="inline-flex items-center text-emerald-500 font-bold"><TrendingDown size={10} />{Math.abs(delta)}</span>}
+      {delta > 0 && <span className="inline-flex items-center text-red-500 font-bold"><TrendingUp size={11} />{delta}</span>}
+      {delta < 0 && <span className="inline-flex items-center text-emerald-500 font-bold"><TrendingDown size={11} />{Math.abs(delta)}</span>}
     </span>
   ) : null
 
@@ -169,7 +182,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         isNew && "animate-new-item animate-slide-in",
         isPinned && "pinned-glow bg-primary/[0.03]",
         scoreLevel === "golden" && !isPinned && "animate-golden-sweep",
-        item.isBursting && "animate-burst"
+        item.isBursting && "animate-burst",
+        // 排名变化背景色：上升淡红，下降淡绿
+        rankChangeBackground
       )}
     >
       {/* ─── Hover actions ─── */}
@@ -198,7 +213,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
       {isPinned && (
         <div className="flex items-center gap-1.5 px-4 pt-3">
           <Pin size={12} className="text-primary fill-primary" />
-          <span className="text-[11px] font-bold text-primary">{"置顶 - " + getScoreLabel(item.score)}</span>
+          <span className="text-[12px] font-bold text-primary">置顶</span>
         </div>
       )}
 
@@ -228,14 +243,14 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 {item.author}
               </span>
               {item.authorVerified && (
-                <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] bg-primary/15 text-primary font-medium">
+                <span className="shrink-0 px-1.5 py-0.5 rounded text-[11px] bg-primary/15 text-primary font-medium">
                   认证
                 </span>
               )}
               {rankBadge}
               {item.isBursting && (
-                <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-orange-500/15 text-orange-400 font-bold">
-                  <Flame size={9} />
+                <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] bg-orange-500/15 text-orange-400 font-bold">
+                  <Flame size={11} />
                   飙升
                 </span>
               )}
@@ -251,34 +266,20 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             </div>
           </div>
 
-          {/* Score badge */}
-          <div
-            className={cn(
-              "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold",
-              scoreLevel === "golden" && "animate-pulse-glow"
-            )}
-            style={{
-              background: `color-mix(in srgb, ${scoreColor} 15%, transparent)`,
-              color: scoreColor,
-              border: `1px solid color-mix(in srgb, ${scoreColor} 30%, transparent)`,
-            }}
-          >
-            <span>{item.score.toFixed(1)}</span>
-            <span className="opacity-70">{getScoreLabel(item.score)}</span>
-          </div>
-        </div>
+{/* 删除右侧评分标签（金狗/银狗等），仅保留认证标签 */}
+  </div>
 
         {/* ═══════ Row 2: Hot rank + Title (ALWAYS VISIBLE) ═══════ */}
         {item.platformRank && (
           <div className="flex items-center gap-1.5 mb-1">
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
               {"热搜 #" + item.platformRank}
             </span>
           </div>
         )}
         <h3 
           className="font-bold text-foreground leading-snug mb-2 text-balance"
-          style={{ fontSize: `${fontSize}px` }}
+          style={{ fontSize: `${Math.max(fontSize + 2, 16)}px` }}
         >
           {item.title}
         </h3>
@@ -323,14 +324,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
         )}
 
-        {/* ═══════ Row 5: Tags + score (ALWAYS VISIBLE) ═══════ */}
-        <div className="flex items-center gap-2 flex-wrap mb-2">
-          {item.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="px-1.5 py-0.5 rounded-full text-[9px] bg-secondary text-muted-foreground font-medium">
-              {tag}
-            </span>
-          ))}
-        </div>
+{/* 已删除推文正文下方的红色标签 */}
 
         {/* ═══════ Row 6: Interaction bar (ALWAYS VISIBLE) ═══════ */}
         <div className="flex items-center justify-between">
