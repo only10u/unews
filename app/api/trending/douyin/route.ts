@@ -10,11 +10,6 @@ export async function GET() {
     if (!res.ok) throw new Error(`upstream ${res.status}`)
     const raw = await res.json()
     
-    // 调试日志：打印上游API返回的第一条原始数据的完整字段
-    if (raw && raw[0]) {
-      console.log('[v0] [douyin raw item #1]', JSON.stringify(raw[0], null, 2))
-    }
-    
     // Map to NewsItem format expected by frontend
     // 扩展字段映射，覆盖抖音API可能的各种字段名
     const data = raw.map((item: any, i: number) => ({

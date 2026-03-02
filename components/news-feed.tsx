@@ -236,22 +236,6 @@ function trendingToNewsItems(
     // Use real excerpt only - no fake fallback text
     const summary = item.excerpt || item.summary || ""
     
-    // 调试日志：仅对前3条输出，排查字段映射问题
-    if (index < 3) {
-      console.log(`[v0] ${platform} item #${index + 1} raw fields:`, {
-        authorName: item.authorName,
-        topAuthor: item.topAuthor,
-        authorAvatar: item.authorAvatar,
-        topAuthorAvatar: item.topAuthorAvatar,
-        excerpt: item.excerpt?.substring(0, 50),
-        summary: item.summary?.substring(0, 50),
-        imageUrl: item.imageUrl,
-        resolvedAuthor: authorName,
-        resolvedAvatar: authorAvatar,
-        resolvedSummary: summary?.substring(0, 50)
-      })
-    }
-
     const id = `${platform}-trending-${item.id}`
     
     const newItem: NewsItem = {
@@ -601,7 +585,7 @@ export function NewsFeed({
             className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground text-xs font-bold shadow-lg hover:bg-primary/90 transition-all animate-slide-in"
           >
             <ArrowUp size={14} />
-            {"有 " + pendingCount + " 条新热点，点击查看"}
+            {"有 " + pendingCount + " 条新热��，点击查看"}
           </button>
         </div>
       )}
