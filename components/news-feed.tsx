@@ -24,6 +24,7 @@ import useSWR from "swr"
 interface NewsFeedProps {
   activeChannel: Platform
   aiSummaryEnabled?: boolean
+  aiDenoiseEnabled?: boolean  // 新增：AI去噪开关
   isAuthed?: boolean
   onOpenAuthDialog?: () => void
   scoreThreshold?: number
@@ -36,6 +37,49 @@ const FREE_PREVIEW = 999 // Temporarily disabled: allow all content for free use
 const W1 = 0.5  // initial weight factor
 const W2 = 0.35 // freshness factor
 const W3 = 0.15 // burst bonus factor
+
+// 娱乐八卦/明星/饭圈关键词 - 用于客户端去噪过滤
+const ENTERTAINMENT_KEYWORDS = [
+  // 明星艺人通用词
+  "明星", "艺人", "偶像", "爱豆", "idol", "演员", "歌手", "练习生", "出道",
+  // 饭圈追星词汇
+  "饭圈", "粉丝", "应援", "打call", "控评", "反黑", "超话", "pick", "出圈",
+  "安利", "入坑", "脱粉", "回踩", "黑粉", "私生", "站姐", "代拍", "接机",
+  "刷榜", "做数据", "营业", "塌房", "糊了", "翻红", "c位", "资源咖",
+  // 娱乐八卦词汇  
+  "恋情", "分手", "官宣", "领证", "离婚", "出轨", "劈腿", "小三", "绯闻",
+  "热恋", "约会", "同框", "合体", "cp", "嗑cp", "锁死", "be了", "he",
+  // 影视剧综相关
+  "电视剧", "电影", "综艺", "上映", "杀青", "开机", "定档", "收视率",
+  "票房", "路演", "首映", "点映", "番位", "主演", "客串", "搭档",
+  "真人秀", "选秀", "淘汰", "晋级", "导师", "学员", "成团", "出道夜",
+  // 娱乐圈事件
+  "红毯", "颁奖", "典礼", "封后", "影帝", "影后", "视帝", "视后",
+  "提名", "获奖", "内娱", "外娱", "韩娱", "日娱", "港圈",
+]
+
+// 强特征词：单独出现即过滤
+const STRONG_ENTERTAINMENT_KEYWORDS = ["饭圈", "追星", "爱豆", "应援", "控评", "超话", "塌房", "刷榜"]
+
+/** 检测内容是否为娱乐八卦/明星饭圈相关 */
+function isEntertainmentContent(title: string, content: string = ""): boolean {
+  const text = (title + " " + content).toLowerCase()
+  
+  // 检查是否包含娱乐关键词
+  const matchedKeywords = ENTERTAINMENT_KEYWORDS.filter(kw => text.includes(kw.toLowerCase()))
+  
+  // 如果匹配了2个或以上关键词，认定为娱乐内容
+  if (matchedKeywords.length >= 2) {
+    return true
+  }
+  
+  // 单个强特征关键词也过滤
+  if (STRONG_ENTERTAINMENT_KEYWORDS.some(kw => text.includes(kw))) {
+    return true
+  }
+  
+  return false
+}
 
 function getPlatformLabel(p: Platform): string {
   switch (p) {
@@ -124,10 +168,41 @@ function computeCompositeScore(item: NewsItem): number {
   return (initialWeight * W1) + (freshness * W2) + (burstBonus * W3) + officialBoost + goldBoost
 }
 
+/** 
+ * 检查字符串是否有效（非空、非undefined、trim后有内容）
+ * 用于防止空字符串覆盖已有数据
+ */
+function isValidString(val: string | undefined | null): val is string {
+  return typeof val === "string" && val.trim() !== ""
+}
+
+/**
+ * 字段级合并：新数据的空值不会覆盖旧数据
+ * 优先使用新数据，但如果新数据为空则保留旧数据
+ */
+function mergeNewsItem(existing: NewsItem | undefined, newItem: NewsItem): NewsItem {
+  if (!existing) return newItem
+  
+  return {
+    ...existing,
+    ...newItem,
+    // 以下字段：新值为空时保留旧值
+    author: isValidString(newItem.author) ? newItem.author : existing.author,
+    authorAvatar: isValidString(newItem.authorAvatar) ? newItem.authorAvatar : existing.authorAvatar,
+    summary: isValidString(newItem.summary) ? newItem.summary : existing.summary,
+    imageUrl: isValidString(newItem.imageUrl) ? newItem.imageUrl : existing.imageUrl,
+    videoUrl: isValidString(newItem.videoUrl) ? newItem.videoUrl : existing.videoUrl,
+    detailContent: isValidString(newItem.detailContent) ? newItem.detailContent : existing.detailContent,
+    // 数组字段：新数组有内容时才替换
+    tags: (newItem.tags && newItem.tags.length > 0) ? newItem.tags : existing.tags,
+  }
+}
+
 /** Convert trending items from API into NewsItem format */
 function trendingToNewsItems(
   items: TrendingItem[],
-  platform: "weibo" | "gongzhonghao" | "douyin"
+  platform: "weibo" | "gongzhonghao" | "douyin",
+  cache?: Map<string, NewsItem>
 ): NewsItem[] {
   const authors: Record<string, { name: string; avatar: string; verified: boolean; followers: string; isOfficial: boolean }> = {
     weibo: { name: "微博热搜", avatar: "https://api.dicebear.com/7.x/initials/svg?seed=WB&backgroundColor=e60012", verified: true, followers: "5000万", isOfficial: true },
@@ -160,9 +235,27 @@ function trendingToNewsItems(
     const authorAvatar = item.authorAvatar || item.topAuthorAvatar || auth.avatar
     // Use real excerpt only - no fake fallback text
     const summary = item.excerpt || item.summary || ""
+    
+    // 调试日志：仅对前3条输出，排查字段映射问题
+    if (index < 3) {
+      console.log(`[v0] ${platform} item #${index + 1} raw fields:`, {
+        authorName: item.authorName,
+        topAuthor: item.topAuthor,
+        authorAvatar: item.authorAvatar,
+        topAuthorAvatar: item.topAuthorAvatar,
+        excerpt: item.excerpt?.substring(0, 50),
+        summary: item.summary?.substring(0, 50),
+        imageUrl: item.imageUrl,
+        resolvedAuthor: authorName,
+        resolvedAvatar: authorAvatar,
+        resolvedSummary: summary?.substring(0, 50)
+      })
+    }
 
-    return {
-      id: `${platform}-trending-${item.id}`,
+    const id = `${platform}-trending-${item.id}`
+    
+    const newItem: NewsItem = {
+      id,
       platform,
       author: authorName,
       authorAvatar: authorAvatar,
@@ -188,7 +281,18 @@ function trendingToNewsItems(
       isBursting: item.isBurst || delta >= 5,
       firstSeenAt: Date.now() - minutesAgo * 60 * 1000,
       isOfficial: auth.isOfficial && item.rank <= 5,
-    } as NewsItem
+    }
+    
+    // 修复1: 与缓存进行字段级merge，防止空值覆盖
+    const existing = cache?.get(id)
+    const merged = mergeNewsItem(existing, newItem)
+    
+    // 更新缓存
+    if (cache) {
+      cache.set(id, merged)
+    }
+    
+    return merged
   })
 }
 
@@ -212,20 +316,29 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             mediaType?: "image" | "video";
             topAuthor?: string; topAuthorAvatar?: string;
             authorName?: string; authorAvatar?: string;
-            detailContent?: string; summary?: string;
+            author?: string;  // API直接返回的author字段
+            summary?: string;
+            detailContent?: string;
+            platformRank?: number;
+            // 扩展：兼容更多可能的字段名
+            nickname?: string;
+            avatar?: string;
+            user?: { screen_name?: string; profile_image_url?: string; avatar?: string };
           }, i: number) => ({
             id: `${platform[0]}${i + 1}`,
-            rank: item.rank || i + 1,
+            rank: item.platformRank || item.rank || i + 1,
             title: item.title || "",
             hotValue: item.hotValue || 0,
             url: item.url || "",
-            // Compatible with both old and new field names
-            excerpt: item.excerpt || item.summary || "",
-            imageUrl: item.imageUrl || item.imageurl || "",
+            // 正文：覆盖更多可能的字段名
+            excerpt: item.summary || item.excerpt || (item as any).digest || (item as any).description || (item as any).content || (item as any).text || (item as any).desc || "",
+            imageUrl: item.imageUrl || item.imageurl || (item as any).cover || (item as any).pic || "",
             videoUrl: item.videoUrl || "",
             mediaType: item.mediaType,
-            topAuthor: item.authorName || item.topAuthor || "热搜博主",
-            topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
+            // 作者：覆盖更多可能的字段名，包括user对象
+            topAuthor: item.author || item.authorName || item.topAuthor || item.nickname || item.user?.screen_name || "",
+            // 头像：覆盖更多可能的字段名，包括user对象
+            topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || item.avatar || item.user?.profile_image_url || item.user?.avatar || "",
             detailContent: item.detailContent || "",
           })
         )
@@ -238,6 +351,7 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
 export function NewsFeed({
   activeChannel,
   aiSummaryEnabled,
+  aiDenoiseEnabled = true,  // 默认启用去噪
   isAuthed,
   onOpenAuthDialog,
   scoreThreshold = 0,
@@ -253,6 +367,9 @@ export function NewsFeed({
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
   const prevItemsRef = useRef<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
+  
+  // 修复1&3: 持久化数据缓存，用于字段级merge，防止空值覆盖
+  const stableCache = useRef<Map<string, NewsItem>>(new Map())
 
   const handleTogglePin = useCallback((id: string) => {
     setPinnedIds((prev) => {
@@ -302,10 +419,12 @@ export function NewsFeed({
     : gzhLoading
 
   // Convert trending to news items - use only real API data, no mock data
+  // 修复1&3: 使用 stableCache 进行字段级merge
   const allItems = useMemo(() => {
-    const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo")
-    const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin")
-    const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao")
+    const cache = stableCache.current
+    const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo", cache)
+    const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin", cache)
+    const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao", cache)
 
     let combined: NewsItem[]
     if (activeChannel === "aggregate") {
@@ -371,9 +490,17 @@ export function NewsFeed({
   }, [mutateWeibo, mutateDouyin, mutateGzh])
 
   // Process with dynamic priority ranking (user-controlled pinning only)
-  const { displayItems: flatDisplayItems, totalCount } = useMemo(() => {
+  const { displayItems: flatDisplayItems, totalCount, filteredCount } = useMemo(() => {
     // Filter hidden items
     let all = deduplicateNews(allItems).filter((item) => !hiddenIds.has(item.id))
+
+    // AI去噪过滤：过滤娱乐八卦、明星动态、饭圈追星、影视剧综相关内容
+    let filtered = 0
+    if (aiDenoiseEnabled) {
+      const beforeCount = all.length
+      all = all.filter((item) => !isEntertainmentContent(item.title, item.summary))
+      filtered = beforeCount - all.length
+    }
 
     // Apply score threshold
     if (scoreThreshold > 0) {
@@ -399,8 +526,8 @@ export function NewsFeed({
       items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
     }
 
-    return { displayItems: items, totalCount: all.length }
-  }, [allItems, scoreThreshold, pinnedIds, hiddenIds])
+    return { displayItems: items, totalCount: all.length, filteredCount: filtered }
+  }, [allItems, scoreThreshold, pinnedIds, hiddenIds, aiDenoiseEnabled])
 
   const displayedItems = isExpanded ? flatDisplayItems : flatDisplayItems.slice(0, PREVIEW_COUNT)
   const hasMore = flatDisplayItems.length > PREVIEW_COUNT
@@ -430,7 +557,12 @@ export function NewsFeed({
             <span className="text-[11px] text-muted-foreground ml-1">
               {"共 " + totalCount + " 条"}
             </span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="��时刷新中" />
+            {aiDenoiseEnabled && filteredCount > 0 && (
+              <span className="text-[10px] text-orange-500/80 ml-1" title="AI智能去噪已过滤娱乐八卦内容">
+                {"(已去噪 " + filteredCount + " 条)"}
+              </span>
+            )}
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="实时刷新中" />
           </div>
 
           <div className="flex items-center gap-2">

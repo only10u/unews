@@ -6,7 +6,6 @@ import {
   type NewsItem,
   getScoreLevel,
   getScoreColor,
-  getScoreLabel,
   formatNumber,
   PLATFORM_ICONS,
 } from "@/lib/mock-data"
@@ -66,9 +65,24 @@ function getPlatformShort(p: NewsItem["platform"]): string {
   }
 }
 
+/** 
+ * 修复2: 检查字符串是否有效（非空、非undefined、trim后有内容）
+ * 用于防止空字符串导致fallback失效
+ */
+function isValidString(val: string | undefined | null): val is string {
+  return typeof val === "string" && val.trim() !== ""
+}
+
+/**
+ * 修复4: 全局持久化的失败URL缓存
+ * 组件重新渲染时不会重置，避免闪烁
+ */
+const failedImageUrls = new Set<string>()
+const failedAvatarUrls = new Set<string>()
+
 /** Proxy anti-hotlink images via our backend */
 function proxyImage(url: string | undefined): string | undefined {
-  if (!url) return undefined
+  if (!url || !isValidString(url)) return undefined
   if (/sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com|wimg\.cn/i.test(url)) {
     return `/api/proxy/image?url=${encodeURIComponent(url)}`
   }
@@ -84,8 +98,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const [showAiSummary, setShowAiSummary] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
-  const [imgError, setImgError] = useState(false)
-  const [avatarError, setAvatarError] = useState(false)
+  // 修复4: 使用全局缓存判断图片是否失败，配合useState触发重渲染
+  const [imgError, setImgError] = useState(() => failedImageUrls.has(item.imageUrl || ""))
+  const [avatarError, setAvatarError] = useState(() => failedAvatarUrls.has(item.authorAvatar || ""))
   const [isExpanded, setIsExpanded] = useState(false)
   const [detailData, setDetailData] = useState<{
     detailContent: string
@@ -151,14 +166,28 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
     finally { setIsLoadingSummary(false) }
   }
 
-  // Rank badge
+  // Rank badge and background color based on rank change
   const delta = item.rankDelta ?? 0
+  
+  // 根据排名变化计算呼吸动画：上升显示淡红呼吸，下降显示淡绿呼吸
+  const getRankChangeAnimation = (): string => {
+    if (delta > 0) {
+      // 排名上升 - 淡红色呼吸动画
+      return "animate-rank-up-breath"
+    } else if (delta < 0) {
+      // 排名下降 - 淡绿色呼吸动画
+      return "animate-rank-down-breath"
+    }
+    return ""
+  }
+  const rankChangeAnimation = getRankChangeAnimation()
+  
   const rankBadge = item.platformRank ? (
-    <span className="inline-flex items-center gap-1 text-[10px] font-mono">
+    <span className="inline-flex items-center gap-1 text-[11px] font-mono">
       <span className="text-muted-foreground">{getPlatformShort(item.platform)}</span>
       <span className="font-bold text-foreground">{"#" + item.platformRank}</span>
-      {delta > 0 && <span className="inline-flex items-center text-red-500 font-bold"><TrendingUp size={10} />{delta}</span>}
-      {delta < 0 && <span className="inline-flex items-center text-emerald-500 font-bold"><TrendingDown size={10} />{Math.abs(delta)}</span>}
+      {delta > 0 && <span className="inline-flex items-center text-red-500 font-bold"><TrendingUp size={11} />{delta}</span>}
+      {delta < 0 && <span className="inline-flex items-center text-emerald-500 font-bold"><TrendingDown size={11} />{Math.abs(delta)}</span>}
     </span>
   ) : null
 
@@ -169,7 +198,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         isNew && "animate-new-item animate-slide-in",
         isPinned && "pinned-glow bg-primary/[0.03]",
         scoreLevel === "golden" && !isPinned && "animate-golden-sweep",
-        item.isBursting && "animate-burst"
+        item.isBursting && "animate-burst",
+        // 排名变化呼吸动画：上升淡红呼吸，下降淡绿呼吸
+        rankChangeAnimation
       )}
     >
       {/* ─── Hover actions ─── */}
@@ -198,143 +229,80 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
       {isPinned && (
         <div className="flex items-center gap-1.5 px-4 pt-3">
           <Pin size={12} className="text-primary fill-primary" />
-          <span className="text-[11px] font-bold text-primary">{"置顶 - " + getScoreLabel(item.score)}</span>
+          <span className="text-[12px] font-bold text-primary">置顶</span>
         </div>
       )}
 
-      <div className="px-4 pt-3 pb-3">
-        {/* ═══════ Row 1: Avatar + Author + Meta (ALWAYS VISIBLE) ═══════ */}
-        <div className="flex items-center gap-2.5 mb-2">
-          {/* Avatar */}
-          <div className="shrink-0 w-9 h-9 rounded-full overflow-hidden bg-secondary border border-border/30">
-            {avatarUrl && !avatarError ? (
-              <img
-                src={avatarUrl}
-                alt={item.author}
-                className="w-full h-full object-cover"
-                onError={() => setAvatarError(true)}
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground">
-                {(item.author || item.authorAvatar || getPlatformLabel(item.platform))[0]}
-              </div>
+      {/* ═══════ 左文右图双栏布局 ═══════ */}
+      <div 
+        className="flex flex-row gap-3 w-full p-4 rounded-xl"
+        style={{ 
+          background: 'rgba(255, 255, 255, 0.03)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.07)',
+          borderRadius: '12px',
+        }}
+      >
+        {/* ═══════ 左侧文字区（65-70%宽度，无图片时撑满100%） ═══════ */}
+        <div 
+          className="flex flex-col justify-between min-w-0"
+          style={{ flex: isValidString(imageUrl) && !imgError ? '1 1 65%' : '1 1 100%' }}
+        >
+          {/* 热榜标签 + 平台信息 */}
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {item.platformRank && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
+                {"热搜 #" + item.platformRank}
+              </span>
             )}
-          </div>
-
-          {/* Author info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-foreground text-[13px] truncate">
-                {item.author}
+            {rankBadge}
+            {item.isBursting && (
+              <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] bg-orange-500/15 text-orange-400 font-bold">
+                <Flame size={11} />
+                飙升
               </span>
-              {item.authorVerified && (
-                <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] bg-primary/15 text-primary font-medium">
-                  认证
-                </span>
-              )}
-              {rankBadge}
-              {item.isBursting && (
-                <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] bg-orange-500/15 text-orange-400 font-bold">
-                  <Flame size={9} />
-                  飙升
-                </span>
-              )}
-            </div>
-            {/* Platform + timestamp */}
-            <div className="flex items-center gap-1.5 mt-0.5">
+            )}
+            <div className="flex items-center gap-1.5">
               <img src={getPlatformIcon(item.platform)} alt="" width={12} height={12} className="opacity-50" />
-              <span className="text-[10px] text-muted-foreground">
-                {getPlatformLabel(item.platform)}
-              </span>
+              <span className="text-[10px] text-muted-foreground">{getPlatformLabel(item.platform)}</span>
               <span className="text-[10px] text-muted-foreground/50">{"·"}</span>
               <span className="text-[10px] text-muted-foreground">{item.timestamp}</span>
             </div>
           </div>
 
-          {/* Score badge */}
-          <div
-            className={cn(
-              "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold",
-              scoreLevel === "golden" && "animate-pulse-glow"
-            )}
-            style={{
-              background: `color-mix(in srgb, ${scoreColor} 15%, transparent)`,
-              color: scoreColor,
-              border: `1px solid color-mix(in srgb, ${scoreColor} 30%, transparent)`,
+          {/* 标题 - 加粗加大 */}
+          <h3 
+            className="font-bold leading-tight mb-2 text-balance sm:text-lg"
+            style={{ 
+              fontSize: '18px', 
+              fontWeight: '700', 
+              color: '#FFFFFF', 
+              lineHeight: '1.4',
             }}
           >
-            <span>{item.score.toFixed(1)}</span>
-            <span className="opacity-70">{getScoreLabel(item.score)}</span>
-          </div>
-        </div>
+            {item.title}
+          </h3>
 
-        {/* ═══════ Row 2: Hot rank + Title (ALWAYS VISIBLE) ═══════ */}
-        {item.platformRank && (
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
-              {"热搜 #" + item.platformRank}
-            </span>
-          </div>
-        )}
-        <h3 
-          className="font-bold text-foreground leading-snug mb-2 text-balance"
-          style={{ fontSize: `${fontSize}px` }}
-        >
-          {item.title}
-        </h3>
-
-        {/* ═══════ Row 3: Content Text (2-3 lines) ═══════ */}
-        {contentText && (
-          <p 
-            className="leading-relaxed line-clamp-3 text-foreground/80 mb-2.5"
-            style={{ fontSize: `${fontSize}px` }}
-          >
-            {contentText}
-          </p>
-        )}
-
-        {/* ═══════ Row 4: Image/Video Thumbnail (ALWAYS VISIBLE) ═══════ */}
-        {item.imageUrl && !imgError && (
-          <div className="w-full rounded-xl overflow-hidden mb-3" style={{ maxHeight: '240px' }}>
-            <a
-              href={item.url || getPlatformSearchUrl(item.platform, item.title)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block relative"
-              onClick={(e) => e.stopPropagation()}
+          {/* 正文摘要 - 3行截断 */}
+          {isValidString(contentText) && (
+            <p 
+              className="mb-3"
+              style={{ 
+                fontSize: '13px', 
+                color: '#AAAAAA', 
+                lineHeight: '1.6',
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+              }}
             >
-              <img
-                src={imageUrl}
-                alt={item.title}
-                loading="lazy"
-                onError={() => setImgError(true)}
-                className="w-full object-cover"
-                style={{ maxHeight: '240px' }}
-              />
-              {/* Video play overlay */}
-              {isVideo && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
-                  <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                    <Play size={20} className="text-black ml-0.5" fill="black" />
-                  </div>
-                </div>
-              )}
-            </a>
-          </div>
-        )}
+              {contentText}
+            </p>
+          )}
 
-        {/* ═══════ Row 5: Tags + score (ALWAYS VISIBLE) ═══════ */}
-        <div className="flex items-center gap-2 flex-wrap mb-2">
-          {item.tags.slice(0, 3).map((tag) => (
-            <span key={tag} className="px-1.5 py-0.5 rounded-full text-[9px] bg-secondary text-muted-foreground font-medium">
-              {tag}
-            </span>
-          ))}
-        </div>
-
-        {/* ═══════ Row 6: Interaction bar (ALWAYS VISIBLE) ═══════ */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-5">
+          {/* 底部交互栏 - 左对齐 */}
+          <div className="flex items-center gap-4 mt-auto">
             <button className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors">
               <MessageCircle size={14} />
               <span className="text-[11px]">{formatNumber(item.comments)}</span>
@@ -358,16 +326,66 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
               <span className="text-[11px]">原文</span>
             </a>
           </div>
-
-          <a
-            href={item.url || getPlatformSearchUrl(item.platform, item.title)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-primary/70 hover:text-primary flex items-center gap-1"
-          >
-            查看原文 <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
+
+        {/* ═══════ 右侧图片区（30-35%宽度，无图片时不渲染） ═══════ */}
+        {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
+          <div 
+            className="shrink-0 sm:w-[240px] w-[120px]"
+            style={{ 
+              flex: '0 0 auto',
+              minWidth: '120px',
+              maxWidth: '280px',
+            }}
+          >
+            <a
+              href={item.url || getPlatformSearchUrl(item.platform, item.title)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div 
+                className="w-full relative overflow-hidden"
+                style={{ 
+                  paddingTop: '75%', /* 4:3 aspect ratio */
+                  borderRadius: '10px',
+                }}
+              >
+                <img
+                  src={imageUrl}
+                  alt={item.title}
+                  loading="lazy"
+                  onError={(e) => {
+                    if (item.imageUrl) failedImageUrls.add(item.imageUrl)
+                    const target = e.target as HTMLImageElement
+                    if (target.parentElement?.parentElement) {
+                      target.parentElement.parentElement.style.display = 'none'
+                    }
+                    setImgError(true)
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                />
+                {/* Video play overlay */}
+                {isVideo && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                      <Play size={16} className="text-black ml-0.5" fill="black" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </a>
+          </div>
+        )}
+      </div>
 
         {/* ═══════ AI Summary (toggleable) ═══════ */}
         {showAiSummary && (

@@ -8,7 +8,7 @@ import {
   BookOpen,
   Sun,
   Moon,
-  Sparkles,
+  Filter,
   Key,
   Settings,
   Bell,
@@ -135,7 +135,7 @@ export function TopNav({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          {/* AI Summary global toggle */}
+          {/* AI去噪 - 过滤娱乐八卦/明星动态/影视综艺/饭圈内容 */}
           <button
             onClick={onToggleAiSummary}
             className={cn(
@@ -144,10 +144,10 @@ export function TopNav({
                 ? "bg-primary/20 text-primary ring-1 ring-primary/30"
                 : "text-muted-foreground hover:text-primary hover:bg-accent/50"
             )}
-            title={aiSummaryEnabled ? "关闭AI总结" : "开启AI总结"}
+            title={aiSummaryEnabled ? "关闭AI去噪" : "开启AI去噪 - 过滤娱乐八卦/明星动态/影视综艺/饭圈内容"}
           >
-            <Sparkles size={14} />
-            <span className="hidden lg:inline">AI总结</span>
+            <Filter size={14} />
+            <span className="hidden lg:inline">AI去噪</span>
           </button>
 
           {/* Push config */}
