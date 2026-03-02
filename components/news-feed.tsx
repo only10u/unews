@@ -168,10 +168,41 @@ function computeCompositeScore(item: NewsItem): number {
   return (initialWeight * W1) + (freshness * W2) + (burstBonus * W3) + officialBoost + goldBoost
 }
 
+/** 
+ * 检查字符串是否有效（非空、非undefined、trim后有内容）
+ * 用于防止空字符串覆盖已有数据
+ */
+function isValidString(val: string | undefined | null): val is string {
+  return typeof val === "string" && val.trim() !== ""
+}
+
+/**
+ * 字段级合并：新数据的空值不会覆盖旧数据
+ * 优先使用新数据，但如果新数据为空则保留旧数据
+ */
+function mergeNewsItem(existing: NewsItem | undefined, newItem: NewsItem): NewsItem {
+  if (!existing) return newItem
+  
+  return {
+    ...existing,
+    ...newItem,
+    // 以下字段：新值为空时保留旧值
+    author: isValidString(newItem.author) ? newItem.author : existing.author,
+    authorAvatar: isValidString(newItem.authorAvatar) ? newItem.authorAvatar : existing.authorAvatar,
+    summary: isValidString(newItem.summary) ? newItem.summary : existing.summary,
+    imageUrl: isValidString(newItem.imageUrl) ? newItem.imageUrl : existing.imageUrl,
+    videoUrl: isValidString(newItem.videoUrl) ? newItem.videoUrl : existing.videoUrl,
+    detailContent: isValidString(newItem.detailContent) ? newItem.detailContent : existing.detailContent,
+    // 数组字段：新数组有内容时才替换
+    tags: (newItem.tags && newItem.tags.length > 0) ? newItem.tags : existing.tags,
+  }
+}
+
 /** Convert trending items from API into NewsItem format */
 function trendingToNewsItems(
   items: TrendingItem[],
-  platform: "weibo" | "gongzhonghao" | "douyin"
+  platform: "weibo" | "gongzhonghao" | "douyin",
+  cache?: Map<string, NewsItem>
 ): NewsItem[] {
   const authors: Record<string, { name: string; avatar: string; verified: boolean; followers: string; isOfficial: boolean }> = {
     weibo: { name: "微博热搜", avatar: "https://api.dicebear.com/7.x/initials/svg?seed=WB&backgroundColor=e60012", verified: true, followers: "5000万", isOfficial: true },
@@ -205,8 +236,10 @@ function trendingToNewsItems(
     // Use real excerpt only - no fake fallback text
     const summary = item.excerpt || item.summary || ""
 
-    return {
-      id: `${platform}-trending-${item.id}`,
+    const id = `${platform}-trending-${item.id}`
+    
+    const newItem: NewsItem = {
+      id,
       platform,
       author: authorName,
       authorAvatar: authorAvatar,
@@ -232,7 +265,18 @@ function trendingToNewsItems(
       isBursting: item.isBurst || delta >= 5,
       firstSeenAt: Date.now() - minutesAgo * 60 * 1000,
       isOfficial: auth.isOfficial && item.rank <= 5,
-    } as NewsItem
+    }
+    
+    // 修复1: 与缓存进行字段级merge，防止空值覆盖
+    const existing = cache?.get(id)
+    const merged = mergeNewsItem(existing, newItem)
+    
+    // 更新缓存
+    if (cache) {
+      cache.set(id, merged)
+    }
+    
+    return merged
   })
 }
 
@@ -298,6 +342,9 @@ export function NewsFeed({
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
   const prevItemsRef = useRef<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
+  
+  // 修复1&3: 持久化数据缓存，用于字段级merge，防止空值覆盖
+  const stableCache = useRef<Map<string, NewsItem>>(new Map())
 
   const handleTogglePin = useCallback((id: string) => {
     setPinnedIds((prev) => {
@@ -347,10 +394,12 @@ export function NewsFeed({
     : gzhLoading
 
   // Convert trending to news items - use only real API data, no mock data
+  // 修复1&3: 使用 stableCache 进行字段级merge
   const allItems = useMemo(() => {
-    const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo")
-    const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin")
-    const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao")
+    const cache = stableCache.current
+    const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo", cache)
+    const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin", cache)
+    const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao", cache)
 
     let combined: NewsItem[]
     if (activeChannel === "aggregate") {

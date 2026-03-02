@@ -65,9 +65,24 @@ function getPlatformShort(p: NewsItem["platform"]): string {
   }
 }
 
+/** 
+ * 修复2: 检查字符串是否有效（非空、非undefined、trim后有内容）
+ * 用于防止空字符串导致fallback失效
+ */
+function isValidString(val: string | undefined | null): val is string {
+  return typeof val === "string" && val.trim() !== ""
+}
+
+/**
+ * 修复4: 全局持久化的失败URL缓存
+ * 组件重新渲染时不会重置，避免闪烁
+ */
+const failedImageUrls = new Set<string>()
+const failedAvatarUrls = new Set<string>()
+
 /** Proxy anti-hotlink images via our backend */
 function proxyImage(url: string | undefined): string | undefined {
-  if (!url) return undefined
+  if (!url || !isValidString(url)) return undefined
   if (/sinaimg\.cn|mmbiz\.qpic\.cn|douyinpic\.com|wimg\.cn/i.test(url)) {
     return `/api/proxy/image?url=${encodeURIComponent(url)}`
   }
@@ -83,8 +98,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   const [showAiSummary, setShowAiSummary] = useState(false)
   const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
-  const [imgError, setImgError] = useState(false)
-  const [avatarError, setAvatarError] = useState(false)
+  // 修复4: 使用全局缓存判断图片是否失败，配合useState触发重渲染
+  const [imgError, setImgError] = useState(() => failedImageUrls.has(item.imageUrl || ""))
+  const [avatarError, setAvatarError] = useState(() => failedAvatarUrls.has(item.authorAvatar || ""))
   const [isExpanded, setIsExpanded] = useState(false)
   const [detailData, setDetailData] = useState<{
     detailContent: string
@@ -220,27 +236,31 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
       <div className="px-4 pt-3 pb-3">
         {/* ═══════ Row 1: Avatar + Author + Meta (ALWAYS VISIBLE) ═══════ */}
         <div className="flex items-center gap-2.5 mb-2">
-          {/* Avatar */}
+          {/* Avatar - 修复2: 加强空字符串检查 */}
           <div className="shrink-0 w-9 h-9 rounded-full overflow-hidden bg-secondary border border-border/30">
-            {avatarUrl && !avatarError ? (
+            {isValidString(avatarUrl) && !avatarError ? (
               <img
                 src={avatarUrl}
-                alt={item.author}
+                alt={isValidString(item.author) ? item.author : getPlatformLabel(item.platform)}
                 className="w-full h-full object-cover"
-                onError={() => setAvatarError(true)}
+                onError={() => {
+                  // 修复4: 记录到全局缓存，防止重渲染时重置
+                  if (item.authorAvatar) failedAvatarUrls.add(item.authorAvatar)
+                  setAvatarError(true)
+                }}
               />
             ) : (
               <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground">
-                {(item.author || item.authorAvatar || getPlatformLabel(item.platform))[0]}
+                {(isValidString(item.author) ? item.author : getPlatformLabel(item.platform))[0]}
               </div>
             )}
           </div>
 
-          {/* Author info */}
+          {/* Author info - 修复2: 加强空字符串检查 */}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-foreground text-[13px] truncate">
-                {item.author}
+                {isValidString(item.author) ? item.author : getPlatformLabel(item.platform)}
               </span>
               {item.authorVerified && (
                 <span className="shrink-0 px-1.5 py-0.5 rounded text-[11px] bg-primary/15 text-primary font-medium">
@@ -284,8 +304,8 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           {item.title}
         </h3>
 
-        {/* ═══════ Row 3: Content Text (2-3 lines) ═══════ */}
-        {contentText && (
+        {/* ═══════ Row 3: Content Text (2-3 lines) - 修复2: 加强空字符串检查 ═══════ */}
+        {isValidString(contentText) && (
           <p 
             className="leading-relaxed line-clamp-3 text-foreground/80 mb-2.5"
             style={{ fontSize: `${fontSize}px` }}
@@ -294,8 +314,8 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </p>
         )}
 
-        {/* ═══════ Row 4: Image/Video Thumbnail (ALWAYS VISIBLE) ═══════ */}
-        {item.imageUrl && !imgError && (
+        {/* ═══════ Row 4: Image/Video Thumbnail (ALWAYS VISIBLE) - 修复2: 加强空字符串检查 ═══════ */}
+        {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
           <div className="w-full rounded-xl overflow-hidden mb-3" style={{ maxHeight: '240px' }}>
             <a
               href={item.url || getPlatformSearchUrl(item.platform, item.title)}
@@ -308,7 +328,11 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 src={imageUrl}
                 alt={item.title}
                 loading="lazy"
-                onError={() => setImgError(true)}
+                onError={() => {
+                  // 修复4: 记录到全局缓存，防止重渲染时重置
+                  if (item.imageUrl) failedImageUrls.add(item.imageUrl)
+                  setImgError(true)
+                }}
                 className="w-full object-cover"
                 style={{ maxHeight: '240px' }}
               />
