@@ -233,146 +233,76 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         </div>
       )}
 
-      <div className="px-4 pt-3 pb-3">
-        {/* ═══════ Row 1: Avatar + Author + Meta (ALWAYS VISIBLE) ═══════ */}
-        <div className="flex items-center gap-2.5 mb-2">
-          {/* Avatar - 修复2: 加强空字符串检查 */}
-          <div className="shrink-0 w-9 h-9 rounded-full overflow-hidden bg-secondary border border-border/30">
-            {isValidString(avatarUrl) && !avatarError ? (
-              <img
-                src={avatarUrl}
-                alt={isValidString(item.author) ? item.author : getPlatformLabel(item.platform)}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  // 调试日志：打印实际字段值方便排查
-                  console.log('[v0] avatar load failed:', {
-                    authorAvatar: item.authorAvatar,
-                    avatarUrl,
-                    platform: item.platform,
-                    author: item.author
-                  })
-                  // 记录到全局缓存，防止重渲染时重置
-                  if (item.authorAvatar) failedAvatarUrls.add(item.authorAvatar)
-                  // 隐藏失败的图片元素
-                  const target = e.target as HTMLImageElement
-                  target.style.display = 'none'
-                  setAvatarError(true)
-                }}
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground">
-                {(isValidString(item.author) ? item.author : getPlatformLabel(item.platform))[0]}
-              </div>
+      {/* ═══════ 左文右图双栏布局 ═══════ */}
+      <div 
+        className="flex flex-row gap-3 w-full p-4 rounded-xl"
+        style={{ 
+          background: 'rgba(255, 255, 255, 0.03)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255, 255, 255, 0.07)',
+          borderRadius: '12px',
+        }}
+      >
+        {/* ═══════ 左侧文字区（65-70%宽度，无图片时撑满100%） ═══════ */}
+        <div 
+          className="flex flex-col justify-between min-w-0"
+          style={{ flex: isValidString(imageUrl) && !imgError ? '1 1 65%' : '1 1 100%' }}
+        >
+          {/* 热榜标签 + 平台信息 */}
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {item.platformRank && (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
+                {"热搜 #" + item.platformRank}
+              </span>
             )}
-          </div>
-
-          {/* Author info - 修复2: 加强空字符串检查 */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-foreground text-[13px] truncate">
-                {isValidString(item.author) ? item.author : getPlatformLabel(item.platform)}
+            {rankBadge}
+            {item.isBursting && (
+              <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] bg-orange-500/15 text-orange-400 font-bold">
+                <Flame size={11} />
+                飙升
               </span>
-              {item.authorVerified && (
-                <span className="shrink-0 px-1.5 py-0.5 rounded text-[11px] bg-primary/15 text-primary font-medium">
-                  认证
-                </span>
-              )}
-              {rankBadge}
-              {item.isBursting && (
-                <span className="shrink-0 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] bg-orange-500/15 text-orange-400 font-bold">
-                  <Flame size={11} />
-                  飙升
-                </span>
-              )}
-            </div>
-            {/* Platform + timestamp */}
-            <div className="flex items-center gap-1.5 mt-0.5">
+            )}
+            <div className="flex items-center gap-1.5">
               <img src={getPlatformIcon(item.platform)} alt="" width={12} height={12} className="opacity-50" />
-              <span className="text-[10px] text-muted-foreground">
-                {getPlatformLabel(item.platform)}
-              </span>
+              <span className="text-[10px] text-muted-foreground">{getPlatformLabel(item.platform)}</span>
               <span className="text-[10px] text-muted-foreground/50">{"·"}</span>
               <span className="text-[10px] text-muted-foreground">{item.timestamp}</span>
             </div>
           </div>
 
-{/* 删除右侧评分标签（金狗/银狗等），仅保留认证标签 */}
-  </div>
-
-        {/* ═══════ Row 2: Hot rank + Title (ALWAYS VISIBLE) ═══════ */}
-        {item.platformRank && (
-          <div className="flex items-center gap-1.5 mb-1">
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/20">
-              {"热搜 #" + item.platformRank}
-            </span>
-          </div>
-        )}
-        <h3 
-          className="font-bold text-foreground leading-snug mb-2 text-balance"
-          style={{ fontSize: `${Math.max(fontSize + 2, 16)}px` }}
-        >
-          {item.title}
-        </h3>
-
-        {/* ═══════ Row 3: Content Text (2-3 lines) - 修复2: 加强空字符串检查 ═══════ */}
-        {isValidString(contentText) && (
-          <p 
-            className="leading-relaxed line-clamp-3 text-foreground/80 mb-2.5"
-            style={{ fontSize: `${fontSize}px` }}
+          {/* 标题 - 加粗加大 */}
+          <h3 
+            className="font-bold leading-tight mb-2 text-balance sm:text-lg"
+            style={{ 
+              fontSize: '18px', 
+              fontWeight: '700', 
+              color: '#FFFFFF', 
+              lineHeight: '1.4',
+            }}
           >
-            {contentText}
-          </p>
-        )}
+            {item.title}
+          </h3>
 
-        {/* ═══════ Row 4: Image/Video Thumbnail - 缩略图样式，左对齐、不裁切 ═══════ */}
-        {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
-          <div className="w-full rounded-xl overflow-hidden mb-3 flex justify-start">
-            <a
-              href={item.url || getPlatformSearchUrl(item.platform, item.title)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block relative"
-              onClick={(e) => e.stopPropagation()}
+          {/* 正文摘要 - 3行截断 */}
+          {isValidString(contentText) && (
+            <p 
+              className="mb-3"
+              style={{ 
+                fontSize: '13px', 
+                color: '#AAAAAA', 
+                lineHeight: '1.6',
+                overflow: 'hidden',
+                display: '-webkit-box',
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: 'vertical',
+              }}
             >
-              <img
-                src={imageUrl}
-                alt={item.title}
-                loading="lazy"
-                onError={(e) => {
-                  if (item.imageUrl) failedImageUrls.add(item.imageUrl)
-                  const target = e.target as HTMLImageElement
-                  if (target.parentElement?.parentElement) {
-                    target.parentElement.parentElement.style.display = 'none'
-                  }
-                  setImgError(true)
-                }}
-                style={{
-                  maxHeight: '120px',
-                  maxWidth: '220px',
-                  width: 'auto',
-                  height: 'auto',
-                  objectFit: 'contain',
-                  borderRadius: '8px',
-                  display: 'block',
-                }}
-              />
-              {/* Video play overlay */}
-              {isVideo && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors rounded-lg">
-                  <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                    <Play size={16} className="text-black ml-0.5" fill="black" />
-                  </div>
-                </div>
-              )}
-            </a>
-          </div>
-        )}
+              {contentText}
+            </p>
+          )}
 
-{/* 已删除推文正文下方的红色标签 */}
-
-        {/* ═══════ Row 6: Interaction bar (ALWAYS VISIBLE) ═══════ */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-5">
+          {/* 底部交互栏 - 左对齐 */}
+          <div className="flex items-center gap-4 mt-auto">
             <button className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors">
               <MessageCircle size={14} />
               <span className="text-[11px]">{formatNumber(item.comments)}</span>
@@ -396,16 +326,66 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
               <span className="text-[11px]">原文</span>
             </a>
           </div>
-
-          <a
-            href={item.url || getPlatformSearchUrl(item.platform, item.title)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-primary/70 hover:text-primary flex items-center gap-1"
-          >
-            查看原文 <ExternalLink className="w-3 h-3" />
-          </a>
         </div>
+
+        {/* ═══════ 右侧图片区（30-35%宽度，无图片时不渲染） ═══════ */}
+        {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
+          <div 
+            className="shrink-0 sm:w-[240px] w-[120px]"
+            style={{ 
+              flex: '0 0 auto',
+              minWidth: '120px',
+              maxWidth: '280px',
+            }}
+          >
+            <a
+              href={item.url || getPlatformSearchUrl(item.platform, item.title)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block relative"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div 
+                className="w-full relative overflow-hidden"
+                style={{ 
+                  paddingTop: '75%', /* 4:3 aspect ratio */
+                  borderRadius: '10px',
+                }}
+              >
+                <img
+                  src={imageUrl}
+                  alt={item.title}
+                  loading="lazy"
+                  onError={(e) => {
+                    if (item.imageUrl) failedImageUrls.add(item.imageUrl)
+                    const target = e.target as HTMLImageElement
+                    if (target.parentElement?.parentElement) {
+                      target.parentElement.parentElement.style.display = 'none'
+                    }
+                    setImgError(true)
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                />
+                {/* Video play overlay */}
+                {isVideo && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
+                    <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                      <Play size={16} className="text-black ml-0.5" fill="black" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </a>
+          </div>
+        )}
+      </div>
 
         {/* ═══════ AI Summary (toggleable) ═══════ */}
         {showAiSummary && (
