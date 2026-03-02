@@ -153,18 +153,18 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   // Rank badge and background color based on rank change
   const delta = item.rankDelta ?? 0
   
-  // 根据排名变化计算背景色：上升显示淡红，下降显示淡绿
-  const getRankChangeBackground = (): string => {
+  // 根据排名变化计算呼吸动画：上升显示淡红呼吸，下降显示淡绿呼吸
+  const getRankChangeAnimation = (): string => {
     if (delta > 0) {
-      // 排名上升 - 淡红色背景
-      return "bg-red-500/[0.04]"
+      // 排名上升 - 淡红色呼吸动画
+      return "animate-rank-up-breath"
     } else if (delta < 0) {
-      // 排名下降 - 淡绿色背景  
-      return "bg-emerald-500/[0.04]"
+      // 排名下降 - 淡绿色呼吸动画
+      return "animate-rank-down-breath"
     }
     return ""
   }
-  const rankChangeBackground = getRankChangeBackground()
+  const rankChangeAnimation = getRankChangeAnimation()
   
   const rankBadge = item.platformRank ? (
     <span className="inline-flex items-center gap-1 text-[11px] font-mono">
@@ -183,8 +183,8 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         isPinned && "pinned-glow bg-primary/[0.03]",
         scoreLevel === "golden" && !isPinned && "animate-golden-sweep",
         item.isBursting && "animate-burst",
-        // 排名变化背景色：上升淡红，下降淡绿
-        rankChangeBackground
+        // 排名变化呼吸动画：上升淡红呼吸，下降淡绿呼吸
+        rankChangeAnimation
       )}
     >
       {/* ─── Hover actions ─── */}

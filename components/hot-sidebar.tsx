@@ -196,8 +196,8 @@ function TrendingList({
       <div>
 {displayItems.map((item) => {
   const delta = item.rankDelta ?? 0
-  // 根据排名变化计算背景色：上升显示淡红，下降显示淡绿
-  const rankChangeBg = delta > 0 ? "bg-red-500/[0.04]" : delta < 0 ? "bg-emerald-500/[0.04]" : ""
+  // 根据排名变化计算呼吸动画：上升显示淡红呼吸，下降显示淡绿呼吸
+  const rankChangeAnim = delta > 0 ? "animate-rank-up-breath" : delta < 0 ? "animate-rank-down-breath" : ""
   return (
   <a
   key={item.id}
@@ -207,7 +207,7 @@ function TrendingList({
   className={cn(
   "flex items-center gap-2 px-3 py-1.5 hover:bg-accent/40 transition-all group/item",
   getRankBg(item.rank),
-  rankChangeBg,
+  rankChangeAnim,
   changedIds.has(item.id) && "animate-flash-rank"
   )}
   >
@@ -277,6 +277,13 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
   const isDragging = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(DEFAULT_WIDTH)
+  
+  // Carousel state for horizontal swipe navigation
+  const carouselRef = useRef<HTMLDivElement>(null)
+  const [carouselIndex, setCarouselIndex] = useState(0)
+  const touchStartX = useRef(0)
+  const touchDeltaX = useRef(0)
+  const [isDraggingCarousel, setIsDraggingCarousel] = useState(false)
 
   const isWide = sidebarWidth >= WIDE_THRESHOLD
 
@@ -305,6 +312,64 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
       return next
     })
   }, [onToggle])
+
+  // Carousel touch/mouse handlers for horizontal swipe
+  const handleTouchStart = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    touchStartX.current = clientX
+    touchDeltaX.current = 0
+    setIsDraggingCarousel(true)
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+    if (!isDraggingCarousel) return
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    touchDeltaX.current = clientX - touchStartX.current
+  }, [isDraggingCarousel])
+
+  const handleTouchEnd = useCallback(() => {
+    if (!isDraggingCarousel) return
+    setIsDraggingCarousel(false)
+    
+    // Threshold for swipe detection
+    const threshold = 50
+    if (touchDeltaX.current < -threshold && carouselIndex < 2) {
+      // Swipe left - show next platform
+      setCarouselIndex(prev => Math.min(2, prev + 1))
+    } else if (touchDeltaX.current > threshold && carouselIndex > 0) {
+      // Swipe right - show previous platform
+      setCarouselIndex(prev => Math.max(0, prev - 1))
+    }
+    touchDeltaX.current = 0
+  }, [isDraggingCarousel, carouselIndex])
+
+  // Reset carousel index when channel changes
+  useEffect(() => {
+    setCarouselIndex(0)
+  }, [activeChannel])
+
+  // Get ordered platforms based on active channel
+  const getOrderedPlatforms = useCallback(() => {
+    if (activeChannel === "weibo") {
+      return [
+        { key: "weibo", title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo },
+        { key: "douyin", title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin },
+        { key: "gzh", title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao },
+      ]
+    } else if (activeChannel === "douyin") {
+      return [
+        { key: "douyin", title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin },
+        { key: "weibo", title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo },
+        { key: "gzh", title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao },
+      ]
+    } else {
+      return [
+        { key: "gzh", title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao },
+        { key: "weibo", title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo },
+        { key: "douyin", title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin },
+      ]
+    }
+  }, [activeChannel, weibo, douyin, gzh, weiboLoading, douyinLoading, gzhLoading])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -474,129 +539,72 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                   />
                 </>
               )
-            ) : activeChannel === "weibo" ? (
-              /* 微博板块：支持横向切换查看其他平台 */
-              <>
-                <TrendingList
-                  title="微博热搜 Top 50"
-                  icon={PLATFORM_ICONS.weibo}
-                  items={weibo.slice(0, 50)}
-                  defaultMaxItems={25}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
-                  loading={weiboLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-                <div className="mx-3 my-2 border-t border-border/30" />
-                <div className="px-3 py-1.5">
-                  <span className="text-[10px] text-muted-foreground">其他平台热搜</span>
-                </div>
-                <TrendingList
-                  title="抖音热搜"
-                  icon={PLATFORM_ICONS.douyin}
-                  items={douyin.slice(0, 50)}
-                  defaultMaxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
-                  loading={douyinLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-                <TrendingList
-                  title="公众号热文"
-                  icon={PLATFORM_ICONS.gongzhonghao}
-                  items={gzh.slice(0, 50)}
-                  defaultMaxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
-                  loading={gzhLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-              </>
-            ) : activeChannel === "douyin" ? (
-              /* 抖音板块：支持横向切换查看其他平台 */
-              <>
-                <TrendingList
-                  title="抖音热搜 Top 50"
-                  icon={PLATFORM_ICONS.douyin}
-                  items={douyin.slice(0, 50)}
-                  defaultMaxItems={25}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
-                  loading={douyinLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-                <div className="mx-3 my-2 border-t border-border/30" />
-                <div className="px-3 py-1.5">
-                  <span className="text-[10px] text-muted-foreground">其他平台热搜</span>
-                </div>
-                <TrendingList
-                  title="微博热搜"
-                  icon={PLATFORM_ICONS.weibo}
-                  items={weibo.slice(0, 50)}
-                  defaultMaxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
-                  loading={weiboLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-                <TrendingList
-                  title="公众号热文"
-                  icon={PLATFORM_ICONS.gongzhonghao}
-                  items={gzh.slice(0, 50)}
-                  defaultMaxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
-                  loading={gzhLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-              </>
             ) : (
-              /* 公众号板块：支持横向切换查看其他平台 */
-              <>
-                <TrendingList
-                  title="公众号热文 Top 50"
-                  icon={PLATFORM_ICONS.gongzhonghao}
-                  items={gzh.slice(0, 50)}
-                  defaultMaxItems={25}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.gongzhonghao}
-                  loading={gzhLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-                <div className="mx-3 my-2 border-t border-border/30" />
-                <div className="px-3 py-1.5">
-                  <span className="text-[10px] text-muted-foreground">其他平台热搜</span>
+              /* 单平台板块：横向滑动carousel实现 */
+              <div className="relative">
+                {/* Carousel indicator dots */}
+                <div className="flex items-center justify-center gap-1.5 py-2">
+                  {[0, 1, 2].map((idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCarouselIndex(idx)}
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full transition-all",
+                        carouselIndex === idx 
+                          ? "bg-primary w-4" 
+                          : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                      )}
+                      title={`查看第${idx + 1}个平台`}
+                    />
+                  ))}
                 </div>
-                <TrendingList
-                  title="微博热搜"
-                  icon={PLATFORM_ICONS.weibo}
-                  items={weibo.slice(0, 50)}
-                  defaultMaxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.weibo}
-                  loading={weiboLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-                <TrendingList
-                  title="抖音热搜"
-                  icon={PLATFORM_ICONS.douyin}
-                  items={douyin.slice(0, 50)}
-                  defaultMaxItems={5}
-                  showViewAll
-                  viewAllUrl={PLATFORM_OFFICIAL_URLS.douyin}
-                  loading={douyinLoading}
-                  collapsible
-                  fontSize={hotListFontSize}
-                />
-              </>
+                
+                {/* Swipe hint */}
+                {carouselIndex === 0 && (
+                  <div className="text-center text-[10px] text-muted-foreground/50 pb-1">
+                    左滑查看其他平台热搜
+                  </div>
+                )}
+                
+                {/* Carousel container */}
+                <div 
+                  ref={carouselRef}
+                  className="overflow-hidden cursor-grab active:cursor-grabbing"
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                  onMouseDown={handleTouchStart}
+                  onMouseMove={handleTouchMove}
+                  onMouseUp={handleTouchEnd}
+                  onMouseLeave={handleTouchEnd}
+                >
+                  <div 
+                    className="flex transition-transform duration-300 ease-out"
+                    style={{ transform: `translateX(-${carouselIndex * 100}%)` }}
+                  >
+                    {getOrderedPlatforms().map((platform) => (
+                      <div 
+                        key={platform.key} 
+                        className="w-full flex-shrink-0"
+                        style={{ minWidth: '100%' }}
+                      >
+                        <TrendingList
+                          title={platform.title}
+                          icon={platform.icon}
+                          items={platform.items.slice(0, 50)}
+                          defaultMaxItems={50}
+                          showViewAll
+                          viewAllUrl={platform.url}
+                          loading={platform.loading}
+                          collapsible={false}
+                          forceExpand
+                          fontSize={hotListFontSize}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </ScrollArea>

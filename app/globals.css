@@ -171,8 +171,21 @@
   50% { transform: scale(1.08); }
 }
 
+/* 排名上升呼吸动画 - 淡红色 */
+@keyframes rank-up-breath {
+  0%, 100% { background-color: rgba(255, 0, 0, 0.04); }
+  50% { background-color: rgba(255, 0, 0, 0.10); }
+}
+/* 排名下降呼吸动画 - 淡绿色 */
+@keyframes rank-down-breath {
+  0%, 100% { background-color: rgba(0, 200, 100, 0.04); }
+  50% { background-color: rgba(0, 200, 100, 0.10); }
+}
+
 .animate-new-item { animation: new-item-flash 5s ease-out forwards; }
 .animate-burst { animation: burst-pulse 0.6s ease-in-out 2; }
+.animate-rank-up-breath { animation: rank-up-breath 2s ease-in-out infinite; }
+.animate-rank-down-breath { animation: rank-down-breath 2s ease-in-out infinite; }
 
 .animate-golden-sweep {
   background: linear-gradient(90deg, transparent 0%, rgba(255,215,0,0.06) 25%, rgba(255,215,0,0.12) 50%, rgba(255,215,0,0.06) 75%, transparent 100%);
