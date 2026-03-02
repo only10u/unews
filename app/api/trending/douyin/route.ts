@@ -22,10 +22,11 @@ export async function GET() {
       isBurst: item.isBurst || false,
       rankDelta: item.rankDelta || 0,
       prevRank: item.prevRank,
-      // NewsItem format fields
-      author: item.authorName || item.topAuthor || "抖音热榜",
+      // NewsItem format fields - 多字段fallback确保正文显示
+      author: item.authorName || item.topAuthor || item.author || "抖音热榜",
       authorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
-      summary: item.excerpt || "",
+      // 抖音正文：优先excerpt，其次summary/description
+      summary: item.excerpt || item.summary || item.description || "",
       platformRank: item.rank || i + 1,
     }))
     

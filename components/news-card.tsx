@@ -243,9 +243,19 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 src={avatarUrl}
                 alt={isValidString(item.author) ? item.author : getPlatformLabel(item.platform)}
                 className="w-full h-full object-cover"
-                onError={() => {
-                  // 修复4: 记录到全局缓存，防止重渲染时重置
+                onError={(e) => {
+                  // 调试日志：打印实际字段值方便排查
+                  console.log('[v0] avatar load failed:', {
+                    authorAvatar: item.authorAvatar,
+                    avatarUrl,
+                    platform: item.platform,
+                    author: item.author
+                  })
+                  // 记录到全局缓存，防止重渲染时重置
                   if (item.authorAvatar) failedAvatarUrls.add(item.authorAvatar)
+                  // 隐藏失败的图片元素
+                  const target = e.target as HTMLImageElement
+                  target.style.display = 'none'
                   setAvatarError(true)
                 }}
               />
@@ -316,7 +326,14 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
 
         {/* ═══════ Row 4: Image/Video Thumbnail (ALWAYS VISIBLE) - 修复2: 加强空字符串检查 ═══════ */}
         {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
-          <div className="w-full rounded-xl overflow-hidden mb-3" style={{ maxHeight: '240px' }}>
+          <div 
+            className="w-full rounded-xl overflow-hidden mb-3"
+            style={{ 
+              // 抖音视频封面使用16:9宽高比，其他平台使用自适应最大高度
+              aspectRatio: item.platform === 'douyin' && isVideo ? '16/9' : undefined,
+              maxHeight: item.platform === 'douyin' && isVideo ? undefined : '240px'
+            }}
+          >
             <a
               href={item.url || getPlatformSearchUrl(item.platform, item.title)}
               target="_blank"
@@ -328,13 +345,28 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 src={imageUrl}
                 alt={item.title}
                 loading="lazy"
-                onError={() => {
-                  // 修复4: 记录到全局缓存，防止重渲染时重置
+                onError={(e) => {
+                  // 调试日志：打印实际字段值方便排查
+                  console.log('[v0] image load failed:', {
+                    originalUrl: item.imageUrl,
+                    proxyUrl: imageUrl,
+                    platform: item.platform,
+                    title: item.title
+                  })
+                  // 记录到全局缓存，防止重渲染时重置
                   if (item.imageUrl) failedImageUrls.add(item.imageUrl)
+                  // 隐藏整个图片容器，避免显示破图占位
+                  const target = e.target as HTMLImageElement
+                  if (target.parentElement?.parentElement) {
+                    target.parentElement.parentElement.style.display = 'none'
+                  }
                   setImgError(true)
                 }}
-                className="w-full object-cover"
-                style={{ maxHeight: '240px' }}
+                className="w-full h-full object-cover"
+                style={{ 
+                  maxHeight: item.platform === 'douyin' ? undefined : '240px',
+                  minHeight: item.platform === 'douyin' ? '100%' : undefined
+                }}
               />
               {/* Video play overlay */}
               {isVideo && (

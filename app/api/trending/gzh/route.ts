@@ -22,10 +22,11 @@ export async function GET() {
       isBurst: item.isBurst || false,
       rankDelta: item.rankDelta || 0,
       prevRank: item.prevRank,
-      // NewsItem format fields
-      author: item.authorName || item.topAuthor || "公众号精选",
+      // NewsItem format fields - 多字段fallback确保正文显示
+      author: item.authorName || item.topAuthor || item.author || "公众号精选",
       authorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
-      summary: item.excerpt || "",
+      // 公众号正文：优先excerpt，其次summary/digest/description/content
+      summary: item.excerpt || item.summary || item.digest || item.description || item.content || "",
       platformRank: item.rank || i + 1,
     }))
     

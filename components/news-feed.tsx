@@ -235,6 +235,22 @@ function trendingToNewsItems(
     const authorAvatar = item.authorAvatar || item.topAuthorAvatar || auth.avatar
     // Use real excerpt only - no fake fallback text
     const summary = item.excerpt || item.summary || ""
+    
+    // 调试日志：仅对前3条输出，排查字段映射问题
+    if (index < 3) {
+      console.log(`[v0] ${platform} item #${index + 1} raw fields:`, {
+        authorName: item.authorName,
+        topAuthor: item.topAuthor,
+        authorAvatar: item.authorAvatar,
+        topAuthorAvatar: item.topAuthorAvatar,
+        excerpt: item.excerpt?.substring(0, 50),
+        summary: item.summary?.substring(0, 50),
+        imageUrl: item.imageUrl,
+        resolvedAuthor: authorName,
+        resolvedAvatar: authorAvatar,
+        resolvedSummary: summary?.substring(0, 50)
+      })
+    }
 
     const id = `${platform}-trending-${item.id}`
     
@@ -300,19 +316,24 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             mediaType?: "image" | "video";
             topAuthor?: string; topAuthorAvatar?: string;
             authorName?: string; authorAvatar?: string;
-            detailContent?: string; summary?: string;
+            author?: string;  // API直接返回的author字段
+            summary?: string;
+            detailContent?: string;
+            platformRank?: number;
           }, i: number) => ({
             id: `${platform[0]}${i + 1}`,
-            rank: item.rank || i + 1,
+            rank: item.platformRank || item.rank || i + 1,
             title: item.title || "",
             hotValue: item.hotValue || 0,
             url: item.url || "",
-            // Compatible with both old and new field names
-            excerpt: item.excerpt || item.summary || "",
+            // Compatible with all possible field names from different API formats
+            // 多字段fallback确保正文显示
+            excerpt: item.excerpt || item.summary || (item as any).digest || (item as any).description || (item as any).content || "",
             imageUrl: item.imageUrl || item.imageurl || "",
             videoUrl: item.videoUrl || "",
             mediaType: item.mediaType,
-            topAuthor: item.authorName || item.topAuthor || "热搜博主",
+            // 兼容所有可能的作者字段名：author (API直接返回) > authorName > topAuthor
+            topAuthor: item.author || item.authorName || item.topAuthor || "",
             topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || "",
             detailContent: item.detailContent || "",
           })
