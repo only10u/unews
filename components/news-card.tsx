@@ -324,16 +324,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </p>
         )}
 
-        {/* ═══════ Row 4: Image/Video Thumbnail (ALWAYS VISIBLE) - 修复2: 加强空字符串检查 ═══════ */}
+        {/* ═══════ Row 4: Image/Video Thumbnail - 缩略图样式，左对齐、不裁切 ═══════ */}
         {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
-          <div 
-            className="w-full rounded-xl overflow-hidden mb-3"
-            style={{ 
-              // 抖音视频封面使用16:9宽高比，其他平台使用自适应最大高度
-              aspectRatio: item.platform === 'douyin' && isVideo ? '16/9' : undefined,
-              maxHeight: item.platform === 'douyin' && isVideo ? undefined : '240px'
-            }}
-          >
+          <div className="w-full rounded-xl overflow-hidden mb-3 flex justify-start">
             <a
               href={item.url || getPlatformSearchUrl(item.platform, item.title)}
               target="_blank"
@@ -346,33 +339,28 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                 alt={item.title}
                 loading="lazy"
                 onError={(e) => {
-                  // 调试日志：打印实际字段值方便排查
-                  console.log('[v0] image load failed:', {
-                    originalUrl: item.imageUrl,
-                    proxyUrl: imageUrl,
-                    platform: item.platform,
-                    title: item.title
-                  })
-                  // 记录到全局缓存，防止重渲染时重置
                   if (item.imageUrl) failedImageUrls.add(item.imageUrl)
-                  // 隐藏整个图片容器，避免显示破图占位
                   const target = e.target as HTMLImageElement
                   if (target.parentElement?.parentElement) {
                     target.parentElement.parentElement.style.display = 'none'
                   }
                   setImgError(true)
                 }}
-                className="w-full h-full object-cover"
-                style={{ 
-                  maxHeight: item.platform === 'douyin' ? undefined : '240px',
-                  minHeight: item.platform === 'douyin' ? '100%' : undefined
+                style={{
+                  maxHeight: '120px',
+                  maxWidth: '220px',
+                  width: 'auto',
+                  height: 'auto',
+                  objectFit: 'contain',
+                  borderRadius: '8px',
+                  display: 'block',
                 }}
               />
               {/* Video play overlay */}
               {isVideo && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors">
-                  <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                    <Play size={20} className="text-black ml-0.5" fill="black" />
+                <div className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/40 transition-colors rounded-lg">
+                  <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
+                    <Play size={16} className="text-black ml-0.5" fill="black" />
                   </div>
                 </div>
               )}
