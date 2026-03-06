@@ -7,7 +7,7 @@ export async function GET(request: Request) {
 
   try {
     const res = await fetch(
-      `https://m.weibo.cn/search?containerid=100103type%3D1%26q%3D${encodeURIComponent(keyword)}`,
+      `https://m.weibo.cn/api/container/getIndex?containerid=100103type%3D1%26q%3D${encodeURIComponent(keyword)}&page_type=searchall`,
       {
         headers: {
           Cookie: "SINAGLOBAL=6120020328159.53.1764562022092; SCF=AsbBafvpkxNyrkK-TgsaUR4yDw__NhKJR-tsJ6zKpX1nL0BKNXZRFam_1yAuIkH9WJc_ktNT7quD9CYx3pWP0_o.; UOR=,,open.weixin.qq.com; XSRF-TOKEN=1vTCDNkRIRg11U1Cj5D1oae1; _s_tentry=-; Apache=3373370684902.025.1772818681420; ULV=1772818681429:63:3:3:3373370684902.025.1772818681420:1772485935381; SUB=_2A25Er2E1DeRhGeFJ7lAT9ijEzzSIHXVnxfz9rDV8PUNbmtAbLRLFkW9Nf6To9Hf46qfBYCydCxD596HltqPwnQtv; SUBP=0033WrSXqPxfM725Ws9jqgMF55529P9D9W5DaKcYIZHdGMg269.WLoU25JpX5KzhUgL.FoMNSKzESoqRShn2dJLoIpHKCFH8SFHF1F-R1CH8SbHFSCHFSfYt; ALF=02_1775410789; WBPSESS=T14wvpd3M-Pt-jVBRK67m3zvBe7M9RYskRAitd6HmzQCAZR3nQNDJhsu5fvRaDcD_vY3qjP8yEQBvglHKwuZIK2kv-SXFDnLC6D6KNuTmb-vBIBBH2aHYaPqPOLIjyxHTIgy6980RfltLDauNwEzzA==",
