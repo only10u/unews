@@ -19,6 +19,7 @@ export async function GET(request: Request) {
       }
     )
     const data = await res.json()
+    console.log('douyin raw:', JSON.stringify(data).slice(0, 500))
     const items = data?.data || data?.aweme_list || []
     const first = items[0]?.aweme_info || items[0]
     if (!first) return NextResponse.json({ success: false, error: "no video found" })
