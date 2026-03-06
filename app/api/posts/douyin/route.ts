@@ -21,6 +21,7 @@ export async function GET(request: Request) {
       }
     )
     const html = await res.text()
+    console.log('douyin html preview:', html.slice(0, 300))
 
     // 从 __NEXT_DATA__ 提取视频数据
     const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
