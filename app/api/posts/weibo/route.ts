@@ -1,34 +1,39 @@
 import { NextResponse } from "next/server"
 
-// GET /api/posts/weibo?keyword=xxx
-// 转发请求到 http://1.12.248.87:3003/weibo/top?keyword=xxx
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const keyword = searchParams.get("keyword")
+  if (!keyword) return NextResponse.json({ success: false, error: "keyword required" })
+
   try {
-    const { searchParams } = new URL(request.url)
-    const keyword = searchParams.get("keyword")
-    
-    if (!keyword) {
-      return NextResponse.json({ success: false, error: "keyword is required" }, { status: 400 })
-    }
-    
-    const res = await fetch(`http://1.12.248.87:3003/weibo/top?keyword=${encodeURIComponent(keyword)}`, {
-      next: { revalidate: 300 }, // 5分钟缓存
-      signal: AbortSignal.timeout(15000),
-    })
-    
-    if (!res.ok) {
-      throw new Error(`upstream ${res.status}`)
-    }
-    
+    const res = await fetch(
+      `https://m.weibo.cn/search?containerid=100103type%3D1%26q%3D${encodeURIComponent(keyword)}`,
+      {
+        headers: {
+          Cookie: "SINAGLOBAL=6120020328159.53.1764562022092; SCF=AsbBafvpkxNyrkK-TgsaUR4yDw__NhKJR-tsJ6zKpX1nL0BKNXZRFam_1yAuIkH9WJc_ktNT7quD9CYx3pWP0_o.; SUB=_2A25Er2E1DeRhGeFJ7lAT9ijEzzSIHXVnxfz9rDV8PUNbmtAbLRLFkW9Nf6To9Hf46qfBYCydCxD596HltqPwnQtv; SUBP=0033WrSXqPxfM725Ws9jqgMF55529P9D9W5DaKcYIZHdGMg269.WLoU25JpX5KzhUgL.FoMNSKzESoqRShn2dJLoIpHKCFH8SFHF1F-R1CH8SbHFSCHFSfYt; ALF=02_1775410789",
+          "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15",
+          Referer: "https://m.weibo.cn",
+          "MWeibo-Pwa": "1",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        signal: AbortSignal.timeout(10000),
+        next: { revalidate: 300 },
+      }
+    )
     const data = await res.json()
-    
-    return NextResponse.json(data, {
-      headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-      },
+    const cards = data?.data?.cards || []
+    const mblog = cards.find((c: any) => c.card_type === 9)?.mblog
+    if (!mblog) return NextResponse.json({ success: false, error: "no post found" })
+    const pics = mblog.pics || []
+    return NextResponse.json({
+      success: true,
+      avatar: mblog.user?.profile_image_url || "",
+      author: mblog.user?.screen_name || "",
+      content: (mblog.text || "").replace(/<[^>]+>/g, "").slice(0, 120),
+      imageUrl: pics[0]?.large?.url || pics[0]?.url || "",
+      url: `https://weibo.com/${mblog.user?.id}/${mblog.bid}`,
     })
   } catch (e) {
-    console.log("[POSTS-WEIBO] error:", String(e))
-    return NextResponse.json({ success: false, error: String(e) }, { status: 500 })
+    return NextResponse.json({ success: false, error: String(e) })
   }
 }
