@@ -17,41 +17,47 @@ export async function GET(request: Request) {
           "Accept-Language": "zh-CN,zh;q=0.9",
         },
         signal: AbortSignal.timeout(10000),
-        next: { revalidate: 300 },
+        next: { revalidate: 0 }, // debug时关闭缓存
       }
     )
 
     const text = await res.text()
 
-    // 如果返回非JSON（被拦截或返回HTML），返回debug信息
+    // DEBUG：直接返回原始响应，看数据结构
     let json: any
     try {
       json = JSON.parse(text)
     } catch {
       return NextResponse.json({
         success: false,
-        error: "non-json response",
+        error: "non-json",
         status: res.status,
-        preview: text.slice(0, 500),
+        preview: text.slice(0, 1000),
       })
     }
 
-    const items = json?.data || []
-    const first = items[0]?.aweme_info || items[0]
-
-    if (!first) {
-      return NextResponse.json({ success: false, error: "no video found" })
-    }
+    // 返回顶层 key 列表 + data 数组第一条的结构
+    const topKeys = Object.keys(json)
+    const firstItem = json?.data?.[0]
+    const firstItemKeys = firstItem ? Object.keys(firstItem) : []
+    const awemeInfo = firstItem?.aweme_info
+    const awemeKeys = awemeInfo ? Object.keys(awemeInfo) : []
 
     return NextResponse.json({
-      success: true,
-      data: {
-        avatar: first?.author?.avatar_thumb?.url_list?.[0] || "",
-        author: first?.author?.nickname || "抖音用户",
-        content: (first?.desc || keyword).slice(0, 120),
-        imageUrl: first?.video?.cover?.url_list?.[0] || "",
-        url: `https://www.douyin.com/video/${first?.aweme_id || ""}`,
-      },
+      debug: true,
+      status: res.status,
+      topKeys,
+      dataLength: json?.data?.length ?? "no data field",
+      firstItemKeys,
+      awemeKeys,
+      // 直接dump第一条的关键字段
+      sample: awemeInfo ? {
+        aweme_id: awemeInfo.aweme_id,
+        desc: awemeInfo.desc,
+        author_nickname: awemeInfo.author?.nickname,
+        cover: awemeInfo.video?.cover?.url_list?.[0],
+        avatar: awemeInfo.author?.avatar_thumb?.url_list?.[0],
+      } : firstItem,
     })
   } catch (e) {
     return NextResponse.json({ success: false, error: String(e) })
