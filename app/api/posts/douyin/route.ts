@@ -24,21 +24,11 @@ export async function GET(request: Request) {
     const text = await res.text()
     const json = JSON.parse(text)
 
-    const first = json?.aweme_list?.[0]
-
+    // dump 完整原始 JSON（截断防止太长）
     return NextResponse.json({
       debug: true,
-      aweme_list_length: json?.aweme_list?.length ?? "no aweme_list",
-      firstKeys: first ? Object.keys(first) : [],
-      sample: first ? {
-        aweme_id: first.aweme_id,
-        desc: first.desc,
-        author_nickname: first.author?.nickname,
-        author_avatar: first.author?.avatar_thumb?.url_list?.[0],
-        cover: first.video?.cover?.url_list?.[0],
-        dynamic_cover: first.video?.dynamic_cover?.url_list?.[0],
-        share_url: first.share_url,
-      } : null,
+      status: res.status,
+      full: JSON.stringify(json).slice(0, 3000),
     })
   } catch (e) {
     return NextResponse.json({ success: false, error: String(e) })
