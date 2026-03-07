@@ -263,29 +263,6 @@ export function NewsCard({ item, isNew, isPinned, onTogglePin, onHide, fontSize 
         rankChangeAnimation
       )}
     >
-      {/* ─── Hover actions ─── */}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={(e) => { e.stopPropagation(); onTogglePin?.(item.id) }}
-          className={cn(
-            "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
-            isPinned
-              ? "bg-primary/20 text-primary border border-primary/30"
-              : "bg-secondary/80 text-muted-foreground hover:text-primary hover:bg-primary/10 border border-border/50"
-          )}
-        >
-          <Pin size={10} className={cn(isPinned && "fill-primary")} />
-          {isPinned ? "取消置顶" : "置顶"}
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onHide?.(item.id) }}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-secondary/80 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border/50 transition-all"
-        >
-          <X size={10} />
-          隐藏
-        </button>
-      </div>
-
       {isPinned && (
         <div className="flex items-center gap-1.5 px-4 pt-3">
           <Pin size={12} className="text-primary fill-primary" />
@@ -297,10 +274,9 @@ export function NewsCard({ item, isNew, isPinned, onTogglePin, onHide, fontSize 
       <div 
         className="flex flex-row gap-3 w-full p-4 rounded-xl bg-card/50 dark:bg-white/[0.03] border border-border/30 dark:border-white/[0.07] backdrop-blur-sm"
       >
-        {/* ═══════ 左侧文字区（65-70%宽度，无图片时撑满100%） ═══════ */}
+        {/* ═══════ 左侧文字区 - 自动填充剩余空间 ═══════ */}
         <div 
-          className="flex flex-col justify-between min-w-0"
-          style={{ flex: isValidString(imageUrl) && !imgError ? '1 1 65%' : '1 1 100%' }}
+          className="flex flex-col justify-between min-w-0 flex-1"
         >
           {/* 热榜标签 + 平台信息 */}
           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -480,8 +456,31 @@ export function NewsCard({ item, isNew, isPinned, onTogglePin, onHide, fontSize 
           </div>
         </div>
 
-        {/* ═══════ 右侧图片区（30-35%宽度，无图片时不渲染） ═══════ */}
-        {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
+        {/* ═══════ 右侧操作按钮区（hover显示） ═══════ */}
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.stopPropagation(); onTogglePin?.(item.id) }}
+            className={cn(
+              "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
+              isPinned
+                ? "bg-primary/20 text-primary border border-primary/30"
+                : "bg-secondary/80 text-muted-foreground hover:text-primary hover:bg-primary/10 border border-border/50"
+            )}
+          >
+            <Pin size={10} className={cn(isPinned && "fill-primary")} />
+            {isPinned ? "取消" : "置顶"}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onHide?.(item.id) }}
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-secondary/80 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border/50 transition-all"
+          >
+            <X size={10} />
+            隐藏
+          </button>
+        </div>
+
+        {/* ═══════ 右侧图片区 - 仅抖音和公众号显示 ═══════ */}
+        {item.platform !== "weibo" && isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
           <div 
             className="shrink-0 sm:w-[240px] w-[120px]"
             style={{ 

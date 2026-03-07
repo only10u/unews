@@ -230,7 +230,7 @@ function trendingToNewsItems(
     const tags: string[] = []
     if (item.rank <= 3) tags.push("热搜前三")
     if (item.rank <= 10) tags.push("Top 10")
-    if (item.isBurst) tags.push("热度爆发")
+    if (item.isBurst) tags.push("热��爆发")
     if (score >= 9.0) tags.push("突发爆点")
     const delta = item.rankDelta ?? 0
 
@@ -364,6 +364,8 @@ export function NewsFeed({
     voiceGender: "female",
     soundType: "voice",
   })
+  // 临时置顶的新消息ID集合（3秒后移除）
+  const [tempTopIds, setTempTopIds] = useState<Set<string>>(new Set())
   const prevItemsRef = useRef<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   
@@ -480,9 +482,13 @@ export function NewsFeed({
     const prevIds = prevItemsRef.current
     const brandNew = currentIds.filter((id) => !prevIds.includes(id))
     if (brandNew.length > 0 && prevIds.length > 0) {
-      // 自动刷新：不再显示"有xx条新热搜"提示，直接更新列表
+      // 新消息高亮动画
       setNewItemIds(new Set(brandNew))
-      const timer = setTimeout(() => setNewItemIds(new Set()), 5000)
+      const highlightTimer = setTimeout(() => setNewItemIds(new Set()), 5000)
+      
+      // 新消息临时置顶3秒
+      setTempTopIds(new Set(brandNew))
+      const topTimer = setTimeout(() => setTempTopIds(new Set()), 3000)
       
       // 语音播报新上榜热搜（仅在非静音状态下）
       if (!isMuted) {
@@ -493,7 +499,10 @@ export function NewsFeed({
         }
       }
       
-      return () => clearTimeout(timer)
+      return () => {
+        clearTimeout(highlightTimer)
+        clearTimeout(topTimer)
+      }
     }
     prevItemsRef.current = currentIds
   }, [allItems, isUserScrolling, isMuted, speakNewItem])
@@ -597,8 +606,17 @@ export function NewsFeed({
       }
     }
 
+    // 临时置顶：将tempTopIds中的项目移到顶部（置顶项之后）
+    if (tempTopIds.size > 0) {
+      const tempTopItems = items.filter(i => tempTopIds.has(i.item.id) && !i.isPinned)
+      const otherItems = items.filter(i => !tempTopIds.has(i.item.id) || i.isPinned)
+      const pinnedItems = otherItems.filter(i => i.isPinned)
+      const normalItems = otherItems.filter(i => !i.isPinned)
+      return { displayItems: [...pinnedItems, ...tempTopItems, ...normalItems], totalCount: all.length, filteredCount: filtered }
+    }
+
     return { displayItems: items, totalCount: all.length, filteredCount: filtered }
-  }, [allItems, scoreThreshold, pinnedIds, hiddenIds, aiDenoiseEnabled, activeChannel])
+  }, [allItems, scoreThreshold, pinnedIds, hiddenIds, aiDenoiseEnabled, activeChannel, tempTopIds])
 
   const displayedItems = isExpanded ? flatDisplayItems : flatDisplayItems.slice(0, PREVIEW_COUNT)
   const hasMore = flatDisplayItems.length > PREVIEW_COUNT
