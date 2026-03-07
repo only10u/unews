@@ -27,53 +27,48 @@ export async function GET(request: Request) {
       }
     )
     const html = await res.text()
-    // 找到第一个文章结果区域，截取 3000 字符
-    const startIdx = html.indexOf('txt-box')
-    return NextResponse.json({
-      status: res.status,
-      preview: html.slice(startIdx > 0 ? startIdx - 200 : 2000, startIdx + 3000)
-    })
 
-    // 匹配标题：从 <a> 标签的 title 属性或文本内容取
-    const titleMatch = html.match(/<a[^>]+uigs="article_title_1"[^>]*title="([^"]+)"/)
-      || html.match(/<a[^>]+uigs="article_title_1"[^>]*>([^<]+)</)
-    // 匹配文章链接
-    const urlMatch = html.match(/<a[^>]+uigs="article_title_1"[^>]*href="([^"]+)"/)
-    // 匹配摘要
-    const summaryMatch = html.match(/class="txt-info"[^>]*>([\s\S]*?)<\/p>/)
-    // 匹配图片：sogou 缩略图里的原始 url 参数
-    const imgMatch = html.match(/sogoucdn\.com\/v2\/thumb[^"']*url=([^&"']+)/)
-    // 匹配作者
-    const authorMatch = html.match(/class="account"[^>]*>([\s\S]*?)<\/span>/)
+    // 匹配第一条文章的链接（article_title_0）
+    const urlMatch = html.match(/uigs="article_title_0"[^>]*href="([^"]+)"/)
+      || html.match(/href="([^"]+)"[^>]*uigs="article_title_0"/)
 
-    const title = titleMatch?.[1]?.trim() || ""
-    const rawUrl = urlMatch?.[1]?.replace(/&amp;/g, "&").trim() || ""
-    const summary = summaryMatch?.[1]?.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "").trim().slice(0, 100) || ""
-    const author = authorMatch?.[1]?.replace(/<[^>]+>/g, "").trim() || account
+    // 匹配第一条文章标题文本（去掉注释和 em 标签）
+    const titleBlockMatch = html.match(/uigs="article_title_0"[^>]*>([\s\S]*?)<\/a>/)
+    const title = titleBlockMatch?.[1]
+      ?.replace(/<!--[\s\S]*?-->/g, "")
+      ?.replace(/<[^>]+>/g, "")
+      ?.trim() || ""
 
-    // 还原图片真实地址
+    // 匹配第一条摘要
+    const summaryMatch = html.match(/id="sogou_vr_11002601_summary_0"[^>]*>([\s\S]*?)<\/p>/)
+    const summary = summaryMatch?.[1]
+      ?.replace(/<!--[\s\S]*?-->/g, "")
+      ?.replace(/<[^>]+>/g, "")
+      ?.replace(/&ldquo;/g, "「")
+      ?.replace(/&rdquo;/g, "」")
+      ?.replace(/&amp;/g, "&")
+      ?.trim()
+      ?.slice(0, 100) || ""
+
+    // 匹配图片：取 sogou 缩略图里的原始 url 参数值并 decode
+    const imgMatch = html.match(/id="sogou_vr_11002601_img_0"[\s\S]*?url=([^&"]+)/)
     let imageUrl = ""
     if (imgMatch?.[1]) {
-      try {
-        imageUrl = decodeURIComponent(imgMatch[1])
-        if (imageUrl.startsWith("http") === false) {
-          imageUrl = "https:" + imageUrl
-        }
-      } catch {
-        imageUrl = ""
-      }
+      try { imageUrl = decodeURIComponent(imgMatch[1]) } catch { imageUrl = "" }
     }
 
+    // 还原 url
+    const rawUrl = urlMatch?.[1]?.replace(/&amp;/g, "&") || ""
     const url = rawUrl.startsWith("http") ? rawUrl : `https://weixin.sogou.com${rawUrl}`
 
-    if (!url) {
+    if (!url || url === "https://weixin.sogou.com") {
       return NextResponse.json({ success: false, error: "no article found" })
     }
 
     return NextResponse.json({
       success: true,
       data: {
-        author,
+        author: account,
         title,
         summary,
         imageUrl,
