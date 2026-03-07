@@ -179,7 +179,10 @@ export default function AdminPage() {
         const err = await res.json()
         setGenerateError(err.error || "生成失败")
       } else {
-        mutateKeys(); mutateStats()
+        // ✅ 修复：强制等待后端写入后再刷新
+        await new Promise(r => setTimeout(r, 300))
+        await mutateKeys(undefined, { revalidate: true })
+        await mutateStats(undefined, { revalidate: true })
         setGenerateError("")
       }
     } catch (e) {
@@ -221,7 +224,10 @@ export default function AdminPage() {
         if (res.ok) { const k = await res.json(); results.push(k.key) }
       }
       setSeedResult(`成功生成 ${results.length} 个密钥`)
-      mutateKeys(); mutateStats()
+      // ✅ 修复：强制等待后端写入后再刷新
+      await new Promise(r => setTimeout(r, 300))
+      await mutateKeys(undefined, { revalidate: true })
+      await mutateStats(undefined, { revalidate: true })
     } catch { setSeedResult("批量生成失败") }
     setSeeding(false)
   }
@@ -693,7 +699,7 @@ export default function AdminPage() {
                   <span className="text-[10px] text-muted-foreground ml-auto bg-secondary/50 px-2 py-0.5 rounded-full">{blacklistedIPs} 个</span>
                 </div>
                 <p className="text-xs text-muted-foreground mb-4 leading-relaxed">
-                  密钥验证连续失败 5 次�� IP 将被自动加入黑名单。高频异常访问也会触发速率限制。
+                  密钥验证连续失败 5 次，IP 将被自动加入黑名单。高频异常访问也会触发速率限制。
                 </p>
                 <div className="space-y-1.5">
                   {(logs || []).filter((l: { risk: string }) => l.risk === "high").slice(0, 6).map((log: { id: string; user: string; detail: string; time: number }) => (
