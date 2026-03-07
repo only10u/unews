@@ -15,10 +15,8 @@ import {
   Repeat2,
   Heart,
   ExternalLink,
-  Sparkles,
   X,
   Play,
-  Loader2,
   Pin,
   TrendingUp,
   TrendingDown,
@@ -38,15 +36,14 @@ interface EmbeddedPost {
   platform?: "weibo" | "douyin" | "wechat"
 }
 
-// 公众号账号轮询列表
-const WECHAT_ACCOUNTS = ["央视新闻", "人民日报", "光明日报", "新华社"]
+
 
 
 interface NewsCardProps {
   item: NewsItem
   isNew?: boolean
+  isTempTop?: boolean // 临时置顶状态（3秒内）
   isPinned?: boolean
-  aiSummaryEnabled?: boolean
   onTogglePin?: (id: string) => void
   onHide?: (id: string) => void
   fontSize?: number
@@ -113,17 +110,15 @@ async function fetchEmbeddedPost(itemId: string, title: string): Promise<Embedde
     let platform: "weibo" | "douyin" | "wechat" = "weibo"
     
     if (itemId.startsWith("w")) {
-      // 微博
-      url = `/api/posts/weibo?keyword=${encodeURIComponent(title)}`
-      platform = "weibo"
+      // 微博 - 不显示内嵌推文，返回null
+      return null
     } else if (itemId.startsWith("d")) {
       // 抖音
       url = `/api/posts/douyin?keyword=${encodeURIComponent(title)}`
       platform = "douyin"
     } else if (itemId.startsWith("g")) {
-      // 公众号 - 随机轮询账号
-      const account = WECHAT_ACCOUNTS[Math.floor(Math.random() * WECHAT_ACCOUNTS.length)]
-      url = `/api/posts/wechat?account=${encodeURIComponent(account)}`
+      // 公众号 - 使用热搜标题作为关键词匹配
+      url = `/api/posts/wechat?keyword=${encodeURIComponent(title)}`
       platform = "wechat"
     } else {
       return null
@@ -179,10 +174,7 @@ async function fetchEmbeddedPost(itemId: string, title: string): Promise<Embedde
 // Images, content text, and avatar are ALWAYS visible
 // Expand reveals: detail/video + AI summary + interactions
 // ─────────────────────────────────────────────────
-export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin, onHide, fontSize = 14 }: NewsCardProps) {
-  const [showAiSummary, setShowAiSummary] = useState(false)
-  const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
-  const [isLoadingSummary, setIsLoadingSummary] = useState(false)
+export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide, fontSize = 14 }: NewsCardProps) {
   // 修复4: 使用全局缓存判断图片是否失败，配合useState触发重渲染
   const [imgError, setImgError] = useState(() => failedImageUrls.has(item.imageUrl || ""))
   const [avatarError, setAvatarError] = useState(() => failedAvatarUrls.has(item.authorAvatar || ""))
@@ -195,7 +187,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   } | null>(null)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [detailError, setDetailError] = useState(false)
-  const prevEnabledRef = useRef(aiSummaryEnabled)
   const scoreLevel = getScoreLevel(item.score)
   const scoreColor = getScoreColor(item.score)
 
@@ -236,32 +227,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
       .finally(() => setIsLoadingDetail(false))
   }, [isExpanded, detailData, isLoadingDetail, item.detailLoaded, item.platform, item.title])
 
-  // AI summary
-  useEffect(() => {
-    if (aiSummaryEnabled && !prevEnabledRef.current) {
-      setShowAiSummary(true)
-      if (!aiSummary && !isLoadingSummary) doFetchSummary()
-    } else if (!aiSummaryEnabled && prevEnabledRef.current) {
-      setShowAiSummary(false)
-    }
-    prevEnabledRef.current = aiSummaryEnabled
-  }, [aiSummaryEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const doFetchSummary = async () => {
-    if (isLoadingSummary) return
-    setIsLoadingSummary(true)
-    try {
-      const res = await fetch("/api/ai/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: item.title, content: contentText, platform: item.platform }),
-      })
-      if (res.ok) { const d = await res.json(); setAiSummary(d.summary) }
-      else setAiSummary("AI 总结生成失败，请稍后重试。")
-    } catch { setAiSummary("AI 总结生成失败，请稍后重试。") }
-    finally { setIsLoadingSummary(false) }
-  }
-
   // Rank badge and background color based on rank change
   const delta = item.rankDelta ?? 0
   
@@ -299,28 +264,8 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
         rankChangeAnimation
       )}
     >
-      {/* ─── Hover actions ─── */}
-      <div className="absolute top-2 left-2 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <button
-          onClick={(e) => { e.stopPropagation(); onTogglePin?.(item.id) }}
-          className={cn(
-            "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
-            isPinned
-              ? "bg-primary/20 text-primary border border-primary/30"
-              : "bg-secondary/80 text-muted-foreground hover:text-primary hover:bg-primary/10 border border-border/50"
-          )}
-        >
-          <Pin size={10} className={cn(isPinned && "fill-primary")} />
-          {isPinned ? "取消置顶" : "置顶"}
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); onHide?.(item.id) }}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-secondary/80 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border/50 transition-all"
-        >
-          <X size={10} />
-          隐藏
-        </button>
-      </div>
+      {/* 新消息闪烁灯条 - 置顶期间显示 */}
+      {isTempTop && <div className="new-bar" />}
 
       {isPinned && (
         <div className="flex items-center gap-1.5 px-4 pt-3">
@@ -333,10 +278,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
       <div 
         className="flex flex-row gap-3 w-full p-4 rounded-xl bg-card/50 dark:bg-white/[0.03] border border-border/30 dark:border-white/[0.07] backdrop-blur-sm"
       >
-        {/* ═══════ 左侧文字区（65-70%宽度，无图片时撑满100%） ═══════ */}
+        {/* ═══════ 左侧文字区 - 自动填充剩余空间 ═══════ */}
         <div 
-          className="flex flex-col justify-between min-w-0"
-          style={{ flex: isValidString(imageUrl) && !imgError ? '1 1 65%' : '1 1 100%' }}
+          className="flex flex-col justify-between min-w-0 flex-1"
         >
           {/* 热榜标签 + 平台信息 */}
           <div className="flex items-center gap-2 mb-2 flex-wrap">
@@ -516,8 +460,31 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
         </div>
 
-        {/* ═══════ 右侧图片区（30-35%宽度，无图片时不渲染） ═══════ */}
-        {isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
+        {/* ═══════ 右侧操作按钮区（hover显示） ═══════ */}
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={(e) => { e.stopPropagation(); onTogglePin?.(item.id) }}
+            className={cn(
+              "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all",
+              isPinned
+                ? "bg-primary/20 text-primary border border-primary/30"
+                : "bg-secondary/80 text-muted-foreground hover:text-primary hover:bg-primary/10 border border-border/50"
+            )}
+          >
+            <Pin size={10} className={cn(isPinned && "fill-primary")} />
+            {isPinned ? "取消" : "置顶"}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onHide?.(item.id) }}
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-secondary/80 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border/50 transition-all"
+          >
+            <X size={10} />
+            隐藏
+          </button>
+        </div>
+
+        {/* ═══════ 右侧图片区 - 仅抖音和公众号显示 ═══════ */}
+        {item.platform !== "weibo" && isValidString(item.imageUrl) && isValidString(imageUrl) && !imgError && (
           <div 
             className="shrink-0 sm:w-[240px] w-[120px]"
             style={{ 
@@ -574,30 +541,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
         )}
       </div>
-
-      {/* ═══════ AI Summary (toggleable) ═══════ */}
-      {showAiSummary && (
-          <div className="mt-3 p-3 rounded-lg bg-primary/5 border border-primary/15 relative">
-            <button
-              onClick={() => setShowAiSummary(false)}
-              className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X size={12} />
-            </button>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Sparkles size={12} className="text-primary" />
-              <span className="text-[11px] font-bold text-primary">AI 智能总结</span>
-            </div>
-            {isLoadingSummary ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 size={14} className="animate-spin" />
-                <span>{"正在生成智能总结..."}</span>
-              </div>
-          ) : (
-            <p className="text-sm text-foreground/80 leading-relaxed">{aiSummary}</p>
-          )}
-        </div>
-      )}
 
       {/* ═══════ Expanded: Deep detail (on click "详情") ═══════ */}
       <div

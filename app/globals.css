@@ -182,10 +182,35 @@
   50% { background-color: rgba(0, 200, 100, 0.10); }
 }
 
+/* 新消息顶部闪烁灯条动画 */
+@keyframes new-bar-blink {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+@keyframes new-bar-fadeout {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 .animate-new-item { animation: new-item-flash 5s ease-out forwards; }
 .animate-burst { animation: burst-pulse 0.6s ease-in-out 2; }
 .animate-rank-up-breath { animation: rank-up-breath 2s ease-in-out infinite; }
 .animate-rank-down-breath { animation: rank-down-breath 2s ease-in-out infinite; }
+
+/* 新消息灯条 */
+.new-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #10b981, transparent);
+  border-radius: 3px 3px 0 0;
+  animation: new-bar-blink 1s ease-in-out infinite;
+}
+.new-bar-fadeout {
+  animation: new-bar-fadeout 0.5s ease-out forwards;
+}
 
 .animate-golden-sweep {
   background: linear-gradient(90deg, transparent 0%, rgba(255,215,0,0.06) 25%, rgba(255,215,0,0.12) 50%, rgba(255,215,0,0.06) 75%, transparent 100%);

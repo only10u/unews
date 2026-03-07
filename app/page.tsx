@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { type Platform } from "@/lib/mock-data"
 import { TopNav, type FontSettings } from "@/components/top-nav"
 import { NewsFeed } from "@/components/news-feed"
@@ -42,7 +42,7 @@ export default function HomePage() {
   const [pushConfigOpen, setPushConfigOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
   const [isAuthed, setIsAuthed] = useState(true) // Temporarily: all users have full access
-  const [aiSummaryEnabled, setAiSummaryEnabled] = useState(false)
+  const [aiDenoiseEnabled, setAiDenoiseEnabled] = useState(false)
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [keywords, setKeywords] = useState<string[]>([])
   const [sidebarWidth, setSidebarWidth] = useState(350)
@@ -50,6 +50,11 @@ export default function HomePage() {
     hotListFontSize: 14,
     tweetFontSize: 14,
   })
+
+  // 滚动联动相关
+  const mainFeedScrollRef = useRef<HTMLDivElement>(null)
+  const sidebarScrollRef = useRef<HTMLDivElement>(null)
+  const isScrollingSyncRef = useRef(false) // 防止循环触发
 
   // Load persisted state on mount
   useEffect(() => {
@@ -100,9 +105,41 @@ export default function HomePage() {
     setSidebarCollapsed(collapsed)
   }, [])
 
-  const handleToggleAiSummary = useCallback(() => {
-    setAiSummaryEnabled((prev) => !prev)
+  const handleToggleAiDenoise = useCallback(() => {
+    setAiDenoiseEnabled((prev) => !prev)
   }, [])
+
+  // 滚动联动处理：左侧滚动时同步右侧
+  const handleMainFeedScroll = useCallback((scrollTop: number, scrollHeight: number, clientHeight: number) => {
+    if (isScrollingSyncRef.current || sidebarCollapsed) return
+    if (!sidebarScrollRef.current) return
+    
+    isScrollingSyncRef.current = true
+    const sidebarEl = sidebarScrollRef.current
+    const ratio = scrollTop / (scrollHeight - clientHeight || 1)
+    const targetTop = ratio * (sidebarEl.scrollHeight - sidebarEl.clientHeight)
+    sidebarEl.scrollTop = targetTop
+    
+    requestAnimationFrame(() => {
+      isScrollingSyncRef.current = false
+    })
+  }, [sidebarCollapsed])
+
+  // 滚动联动处理：右侧滚动时同步左侧
+  const handleSidebarScroll = useCallback((scrollTop: number, scrollHeight: number, clientHeight: number) => {
+    if (isScrollingSyncRef.current || sidebarCollapsed) return
+    if (!mainFeedScrollRef.current) return
+    
+    isScrollingSyncRef.current = true
+    const mainEl = mainFeedScrollRef.current
+    const ratio = scrollTop / (scrollHeight - clientHeight || 1)
+    const targetTop = ratio * (mainEl.scrollHeight - mainEl.clientHeight)
+    mainEl.scrollTop = targetTop
+    
+    requestAnimationFrame(() => {
+      isScrollingSyncRef.current = false
+    })
+  }, [sidebarCollapsed])
 
   return (
     <div className="min-h-screen bg-background">
@@ -110,14 +147,10 @@ export default function HomePage() {
       <TopNav
         activeChannel={activeChannel}
         onChannelChange={handleChannelChange}
-        isMuted={isMuted}
-        onToggleMute={handleToggleMute}
-        onOpenSoundSettings={() => setSoundSettingsOpen(true)}
-        onOpenAuthDialog={() => setAuthDialogOpen(true)}
         onOpenPushConfig={() => setPushConfigOpen(true)}
         onOpenTutorial={() => setTutorialOpen(true)}
-        aiSummaryEnabled={aiSummaryEnabled}
-        onToggleAiSummary={handleToggleAiSummary}
+        aiDenoiseEnabled={aiDenoiseEnabled}
+        onToggleAiDenoise={handleToggleAiDenoise}
         fontSettings={fontSettings}
         onFontSettingsChange={setFontSettings}
       />
@@ -132,17 +165,29 @@ export default function HomePage() {
         >
           <NewsFeed
             activeChannel={activeChannel}
-            aiSummaryEnabled={aiSummaryEnabled}
+            aiDenoiseEnabled={aiDenoiseEnabled}
             isAuthed={isAuthed}
             onOpenAuthDialog={() => setAuthDialogOpen(true)}
             scoreThreshold={scoreThreshold}
             keywords={keywords}
             tweetFontSize={fontSettings.tweetFontSize}
+            isMuted={isMuted}
+            onToggleMute={handleToggleMute}
+            scrollRef={mainFeedScrollRef}
+            onScroll={handleMainFeedScroll}
           />
         </div>
 
         {/* Hot Rankings Sidebar */}
-        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} isAuthed={isAuthed} hotListFontSize={fontSettings.hotListFontSize} />
+        <HotSidebar 
+          activeChannel={activeChannel} 
+          onToggle={handleSidebarToggle} 
+          onWidthChange={setSidebarWidth} 
+          isAuthed={isAuthed} 
+          hotListFontSize={fontSettings.hotListFontSize}
+          scrollRef={sidebarScrollRef}
+          onScroll={handleSidebarScroll}
+        />
       </div>
 
       {/* Audio unlock overlay removed */}
