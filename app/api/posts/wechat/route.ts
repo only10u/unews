@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server"
 
-const ACCOUNTS: Record<string, string> = {
-  "央视新闻": "央视新闻",
-  "人民日报": "人民日报",
-  "光明日报": "光明日报",
-  "新华社": "新华社",
-}
-
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const account = searchParams.get("account") || "央视新闻"
-  const query = ACCOUNTS[account] || account
+  // 优先使用 keyword 参数（热搜标题），否则使用 account 参数
+  const keyword = searchParams.get("keyword")
+  const account = searchParams.get("account")
+  const query = keyword || account || "热点新闻"
 
   try {
     const res = await fetch(

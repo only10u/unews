@@ -15,10 +15,8 @@ import {
   Repeat2,
   Heart,
   ExternalLink,
-  Sparkles,
   X,
   Play,
-  Loader2,
   Pin,
   TrendingUp,
   TrendingDown,
@@ -38,15 +36,13 @@ interface EmbeddedPost {
   platform?: "weibo" | "douyin" | "wechat"
 }
 
-// 公众号账号轮询列表
-const WECHAT_ACCOUNTS = ["央视新闻", "人民日报", "光明日报", "新华社"]
+
 
 
 interface NewsCardProps {
   item: NewsItem
   isNew?: boolean
   isPinned?: boolean
-  aiSummaryEnabled?: boolean
   onTogglePin?: (id: string) => void
   onHide?: (id: string) => void
   fontSize?: number
@@ -113,17 +109,15 @@ async function fetchEmbeddedPost(itemId: string, title: string): Promise<Embedde
     let platform: "weibo" | "douyin" | "wechat" = "weibo"
     
     if (itemId.startsWith("w")) {
-      // 微博
-      url = `/api/posts/weibo?keyword=${encodeURIComponent(title)}`
-      platform = "weibo"
+      // 微博 - 不显示内嵌推文，返回null
+      return null
     } else if (itemId.startsWith("d")) {
       // 抖音
       url = `/api/posts/douyin?keyword=${encodeURIComponent(title)}`
       platform = "douyin"
     } else if (itemId.startsWith("g")) {
-      // 公众号 - 随机轮询账号
-      const account = WECHAT_ACCOUNTS[Math.floor(Math.random() * WECHAT_ACCOUNTS.length)]
-      url = `/api/posts/wechat?account=${encodeURIComponent(account)}`
+      // 公众号 - 使用热搜标题作为关键词匹配
+      url = `/api/posts/wechat?keyword=${encodeURIComponent(title)}`
       platform = "wechat"
     } else {
       return null
@@ -179,10 +173,7 @@ async function fetchEmbeddedPost(itemId: string, title: string): Promise<Embedde
 // Images, content text, and avatar are ALWAYS visible
 // Expand reveals: detail/video + AI summary + interactions
 // ─────────────────────────────────────────────────
-export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin, onHide, fontSize = 14 }: NewsCardProps) {
-  const [showAiSummary, setShowAiSummary] = useState(false)
-  const [aiSummary, setAiSummary] = useState<string | null>(item.aiSummary || null)
-  const [isLoadingSummary, setIsLoadingSummary] = useState(false)
+export function NewsCard({ item, isNew, isPinned, onTogglePin, onHide, fontSize = 14 }: NewsCardProps) {
   // 修复4: 使用全局缓存判断图片是否失败，配合useState触发重渲染
   const [imgError, setImgError] = useState(() => failedImageUrls.has(item.imageUrl || ""))
   const [avatarError, setAvatarError] = useState(() => failedAvatarUrls.has(item.authorAvatar || ""))
@@ -195,7 +186,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
   } | null>(null)
   const [isLoadingDetail, setIsLoadingDetail] = useState(false)
   const [detailError, setDetailError] = useState(false)
-  const prevEnabledRef = useRef(aiSummaryEnabled)
   const scoreLevel = getScoreLevel(item.score)
   const scoreColor = getScoreColor(item.score)
 
@@ -235,32 +225,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
       .catch(() => setDetailError(true))
       .finally(() => setIsLoadingDetail(false))
   }, [isExpanded, detailData, isLoadingDetail, item.detailLoaded, item.platform, item.title])
-
-  // AI summary
-  useEffect(() => {
-    if (aiSummaryEnabled && !prevEnabledRef.current) {
-      setShowAiSummary(true)
-      if (!aiSummary && !isLoadingSummary) doFetchSummary()
-    } else if (!aiSummaryEnabled && prevEnabledRef.current) {
-      setShowAiSummary(false)
-    }
-    prevEnabledRef.current = aiSummaryEnabled
-  }, [aiSummaryEnabled]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const doFetchSummary = async () => {
-    if (isLoadingSummary) return
-    setIsLoadingSummary(true)
-    try {
-      const res = await fetch("/api/ai/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: item.title, content: contentText, platform: item.platform }),
-      })
-      if (res.ok) { const d = await res.json(); setAiSummary(d.summary) }
-      else setAiSummary("AI 总结生成失败，请稍后重试。")
-    } catch { setAiSummary("AI 总结生成失败，请稍后重试。") }
-    finally { setIsLoadingSummary(false) }
-  }
 
   // Rank badge and background color based on rank change
   const delta = item.rankDelta ?? 0
@@ -574,30 +538,6 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
           </div>
         )}
       </div>
-
-      {/* ═══════ AI Summary (toggleable) ═══════ */}
-      {showAiSummary && (
-          <div className="mt-3 p-3 rounded-lg bg-primary/5 border border-primary/15 relative">
-            <button
-              onClick={() => setShowAiSummary(false)}
-              className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <X size={12} />
-            </button>
-            <div className="flex items-center gap-1.5 mb-1.5">
-              <Sparkles size={12} className="text-primary" />
-              <span className="text-[11px] font-bold text-primary">AI 智能总结</span>
-            </div>
-            {isLoadingSummary ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 size={14} className="animate-spin" />
-                <span>{"正在生成智能总结..."}</span>
-              </div>
-          ) : (
-            <p className="text-sm text-foreground/80 leading-relaxed">{aiSummary}</p>
-          )}
-        </div>
-      )}
 
       {/* ═══════ Expanded: Deep detail (on click "详情") ═══════ */}
       <div

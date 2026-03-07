@@ -9,6 +9,7 @@ import {
   PLATFORM_ICONS,
 } from "@/lib/mock-data"
 import { NewsCard } from "./news-card"
+import { HotOverview } from "./hot-overview"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   ChevronDown,
@@ -17,19 +18,23 @@ import {
   RefreshCw,
   ArrowUp,
   Pin,
+  Volume2,
+  VolumeX,
 } from "lucide-react"
 import Image from "next/image"
 import useSWR from "swr"
 
 interface NewsFeedProps {
   activeChannel: Platform
-  aiSummaryEnabled?: boolean
-  aiDenoiseEnabled?: boolean  // 新增：AI去噪开关
+  aiDenoiseEnabled?: boolean  // AI降噪开关
   isAuthed?: boolean
   onOpenAuthDialog?: () => void
   scoreThreshold?: number
   keywords?: string[]
   tweetFontSize?: number
+  // 音频播报相关
+  isMuted?: boolean
+  onToggleMute?: () => void
 }
 
 const PREVIEW_COUNT = 20
@@ -334,13 +339,14 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
 
 export function NewsFeed({
   activeChannel,
-  aiSummaryEnabled,
-  aiDenoiseEnabled = true,  // 默认启用去噪
+  aiDenoiseEnabled = false,  // 默认关闭，点击按钮启用
   isAuthed,
   onOpenAuthDialog,
   scoreThreshold = 0,
   keywords = [],
   tweetFontSize = 14,
+  isMuted = true,
+  onToggleMute,
 }: NewsFeedProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -442,7 +448,27 @@ export function NewsFeed({
     return () => { el.removeEventListener("scroll", onScroll); clearTimeout(timer) }
   }, [])
 
-  // Detect new items for animation + queue mode
+  // 语音播报函数
+  const speakNewItem = useCallback((platform: string, title: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return
+    
+    const platformLabel = platform === "weibo" ? "微博" : platform === "douyin" ? "抖音" : "公众号"
+    const text = `${platformLabel}新消息：${title}`
+    
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = "zh-CN"
+    utterance.rate = 1.0
+    utterance.pitch = 1.0
+    
+    // 选择中文声音
+    const voices = window.speechSynthesis.getVoices()
+    const zhVoice = voices.find(v => v.lang.includes("zh")) || voices[0]
+    if (zhVoice) utterance.voice = zhVoice
+    
+    window.speechSynthesis.speak(utterance)
+  }, [])
+
+  // Detect new items for animation + queue mode + voice broadcast
   useEffect(() => {
     const currentIds = allItems.map((i) => i.id)
     const prevIds = prevItemsRef.current
@@ -451,10 +477,20 @@ export function NewsFeed({
       // 自动刷新：不再显示"有xx条新热搜"提示，直接更新列表
       setNewItemIds(new Set(brandNew))
       const timer = setTimeout(() => setNewItemIds(new Set()), 5000)
+      
+      // 语音播报新上榜热搜（仅在非静音状态下）
+      if (!isMuted) {
+        const newItems = allItems.filter(item => brandNew.includes(item.id))
+        // 只播报第一条新上榜的，避免连续播报太多
+        if (newItems.length > 0) {
+          speakNewItem(newItems[0].platform, newItems[0].title)
+        }
+      }
+      
       return () => clearTimeout(timer)
     }
     prevItemsRef.current = currentIds
-  }, [allItems, isUserScrolling])
+  }, [allItems, isUserScrolling, isMuted, speakNewItem])
 
   const handleViewPending = useCallback(() => {
     setPendingCount(0)
@@ -493,9 +529,7 @@ export function NewsFeed({
     const unpinned = all.filter((item) => !pinnedIds.has(item.id))
 
     // Sort unpinned by composite score
-    unpinned
-      .filter((item) => item.score > 1.0)
-      .sort((a, b) => computeCompositeScore(b) - computeCompositeScore(a))
+    unpinned.sort((a, b) => computeCompositeScore(b) - computeCompositeScore(a))
     userPinned.sort((a, b) => computeCompositeScore(b) - computeCompositeScore(a))
 
     // Build display list: pinned first, then the rest
@@ -503,12 +537,62 @@ export function NewsFeed({
     for (const p of userPinned) {
       items.push({ item: p, isPinned: true, compositeScore: computeCompositeScore(p) })
     }
-    for (const s of unpinned) {
-      items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
+
+    // 聚合板块特殊排序：公众号/抖音优先前5-10位，微博前3穿插到3/6/9位
+    if (activeChannel === "aggregate" && unpinned.length > 0) {
+      // 分离三个平台
+      const weiboItems = unpinned.filter(i => i.platform === "weibo")
+      const douyinItems = unpinned.filter(i => i.platform === "douyin")
+      const gzhItems = unpinned.filter(i => i.platform === "gongzhonghao")
+      
+      // 取各平台前N条
+      const topWeibo = weiboItems.slice(0, 3)  // 微博前3
+      const topDouyin = douyinItems.slice(0, 5)  // 抖音前5
+      const topGzh = gzhItems.slice(0, 5)  // 公众号前5
+      
+      // 剩余内容按热度混排
+      const usedIds = new Set([...topWeibo, ...topDouyin, ...topGzh].map(i => i.id))
+      const remaining = unpinned.filter(i => !usedIds.has(i.id))
+      
+      // 构建前10位：公众号/抖音交替填充，微博穿插到3/6/9位
+      const front10: NewsItem[] = []
+      let dyIdx = 0, gzhIdx = 0, wbIdx = 0
+      
+      for (let pos = 1; pos <= 10; pos++) {
+        // 微博穿插到第3、6、9位
+        if ((pos === 3 || pos === 6 || pos === 9) && wbIdx < topWeibo.length) {
+          front10.push(topWeibo[wbIdx++])
+        } else {
+          // 其他位置：公众号和抖音交替
+          if (pos % 2 === 1 && gzhIdx < topGzh.length) {
+            front10.push(topGzh[gzhIdx++])
+          } else if (dyIdx < topDouyin.length) {
+            front10.push(topDouyin[dyIdx++])
+          } else if (gzhIdx < topGzh.length) {
+            front10.push(topGzh[gzhIdx++])
+          } else if (wbIdx < topWeibo.length) {
+            front10.push(topWeibo[wbIdx++])
+          }
+        }
+      }
+      
+      // 添加未使用的top条目
+      const front10Ids = new Set(front10.map(i => i.id))
+      const unusedTop = [...topWeibo, ...topDouyin, ...topGzh].filter(i => !front10Ids.has(i.id))
+      
+      // 最终列表：前10 + 未使用的top + 剩余混排
+      const finalList = [...front10, ...unusedTop, ...remaining]
+      for (const s of finalList) {
+        items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
+      }
+    } else {
+      for (const s of unpinned) {
+        items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
+      }
     }
 
     return { displayItems: items, totalCount: all.length, filteredCount: filtered }
-  }, [allItems, scoreThreshold, pinnedIds, hiddenIds, aiDenoiseEnabled])
+  }, [allItems, scoreThreshold, pinnedIds, hiddenIds, aiDenoiseEnabled, activeChannel])
 
   const displayedItems = isExpanded ? flatDisplayItems : flatDisplayItems.slice(0, PREVIEW_COUNT)
   const hasMore = flatDisplayItems.length > PREVIEW_COUNT
@@ -547,6 +631,24 @@ export function NewsFeed({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* 音频播报按钮 */}
+            <button
+              onClick={onToggleMute}
+              className={cn(
+                "relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all",
+                isMuted
+                  ? "bg-secondary text-muted-foreground hover:text-foreground hover:bg-accent"
+                  : "bg-primary/20 text-primary ring-1 ring-primary/30"
+              )}
+              title={isMuted ? "开启语音播报" : "关闭语音播报"}
+            >
+              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              <span className="hidden sm:inline">{isMuted ? "语音" : "播报中"}</span>
+              {!isMuted && (
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              )}
+            </button>
+
             <button
               onClick={handleManualRefresh}
               className={cn(
@@ -629,7 +731,6 @@ export function NewsFeed({
                       item={entry.item}
                       isNew={false}
                       isPinned={false}
-                      aiSummaryEnabled={false}
                       fontSize={tweetFontSize}
                     />
                   </div>
@@ -639,7 +740,6 @@ export function NewsFeed({
                   item={entry.item}
                   isNew={newItemIds.has(entry.item.id)}
                   isPinned={entry.isPinned}
-                  aiSummaryEnabled={aiSummaryEnabled}
                   onTogglePin={handleTogglePin}
                   onHide={handleHide}
                   fontSize={tweetFontSize}
@@ -679,6 +779,11 @@ export function NewsFeed({
                 收起列表
               </button>
             </div>
+          )}
+
+          {/* 热点速览区域 */}
+          {activeChannel === "aggregate" && (
+            <HotOverview items={allItems} />
           )}
         </div>
       </div>

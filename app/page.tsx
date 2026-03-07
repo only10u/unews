@@ -42,7 +42,7 @@ export default function HomePage() {
   const [pushConfigOpen, setPushConfigOpen] = useState(false)
   const [tutorialOpen, setTutorialOpen] = useState(false)
   const [isAuthed, setIsAuthed] = useState(true) // Temporarily: all users have full access
-  const [aiSummaryEnabled, setAiSummaryEnabled] = useState(false)
+  const [aiDenoiseEnabled, setAiDenoiseEnabled] = useState(false)
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [keywords, setKeywords] = useState<string[]>([])
   const [sidebarWidth, setSidebarWidth] = useState(350)
@@ -100,8 +100,8 @@ export default function HomePage() {
     setSidebarCollapsed(collapsed)
   }, [])
 
-  const handleToggleAiSummary = useCallback(() => {
-    setAiSummaryEnabled((prev) => !prev)
+  const handleToggleAiDenoise = useCallback(() => {
+    setAiDenoiseEnabled((prev) => !prev)
   }, [])
 
   return (
@@ -110,14 +110,10 @@ export default function HomePage() {
       <TopNav
         activeChannel={activeChannel}
         onChannelChange={handleChannelChange}
-        isMuted={isMuted}
-        onToggleMute={handleToggleMute}
-        onOpenSoundSettings={() => setSoundSettingsOpen(true)}
-        onOpenAuthDialog={() => setAuthDialogOpen(true)}
         onOpenPushConfig={() => setPushConfigOpen(true)}
         onOpenTutorial={() => setTutorialOpen(true)}
-        aiSummaryEnabled={aiSummaryEnabled}
-        onToggleAiSummary={handleToggleAiSummary}
+        aiDenoiseEnabled={aiDenoiseEnabled}
+        onToggleAiDenoise={handleToggleAiDenoise}
         fontSettings={fontSettings}
         onFontSettingsChange={setFontSettings}
       />
@@ -132,12 +128,14 @@ export default function HomePage() {
         >
           <NewsFeed
             activeChannel={activeChannel}
-            aiSummaryEnabled={aiSummaryEnabled}
+            aiDenoiseEnabled={aiDenoiseEnabled}
             isAuthed={isAuthed}
             onOpenAuthDialog={() => setAuthDialogOpen(true)}
             scoreThreshold={scoreThreshold}
             keywords={keywords}
             tweetFontSize={fontSettings.tweetFontSize}
+            isMuted={isMuted}
+            onToggleMute={handleToggleMute}
           />
         </div>
 

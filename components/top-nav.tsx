@@ -3,14 +3,10 @@
 import { cn } from "@/lib/utils"
 import { PLATFORM_ICONS, type Platform } from "@/lib/mock-data"
 import {
-  Volume2,
-  VolumeX,
   BookOpen,
   Sun,
   Moon,
   Filter,
-  Key,
-  Settings,
   Bell,
   Type,
   Minus,
@@ -28,14 +24,10 @@ export interface FontSettings {
 interface TopNavProps {
   activeChannel: Platform
   onChannelChange: (channel: Platform) => void
-  isMuted: boolean
-  onToggleMute: () => void
-  onOpenSoundSettings?: () => void
-  onOpenAuthDialog?: () => void
   onOpenPushConfig?: () => void
   onOpenTutorial?: () => void
-  aiSummaryEnabled?: boolean
-  onToggleAiSummary?: () => void
+  aiDenoiseEnabled?: boolean
+  onToggleAiDenoise?: () => void
   fontSettings?: FontSettings
   onFontSettingsChange?: (settings: FontSettings) => void
 }
@@ -52,14 +44,10 @@ const channels: { key: Platform; label: string; icon?: string }[] = [
 export function TopNav({
   activeChannel,
   onChannelChange,
-  isMuted,
-  onToggleMute,
-  onOpenSoundSettings,
-  onOpenAuthDialog,
   onOpenPushConfig,
   onOpenTutorial,
-  aiSummaryEnabled = false,
-  onToggleAiSummary,
+  aiDenoiseEnabled = false,
+  onToggleAiDenoise,
   fontSettings = { hotListFontSize: 14, tweetFontSize: 14 },
   onFontSettingsChange,
 }: TopNavProps) {
@@ -135,19 +123,19 @@ export function TopNav({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          {/* AI去噪 - 过滤娱乐八卦/明星动态/影视综艺/饭圈内容 */}
+          {/* AI降噪 - 过滤娱乐八卦/明星动态/影视综艺/饭圈内容 */}
           <button
-            onClick={onToggleAiSummary}
+            onClick={onToggleAiDenoise}
             className={cn(
               "flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all",
-              aiSummaryEnabled
+              aiDenoiseEnabled
                 ? "bg-primary/20 text-primary ring-1 ring-primary/30"
                 : "text-muted-foreground hover:text-primary hover:bg-accent/50"
             )}
-            title={aiSummaryEnabled ? "关闭AI去噪" : "开启AI去噪 - 过滤娱乐八卦/明星动态/影视综艺/饭圈内容"}
+            title={aiDenoiseEnabled ? "关闭AI降噪" : "开启AI降噪 - 过滤娱乐八卦/明星动态/影视综艺/饭圈内容"}
           >
             <Filter size={14} />
-            <span className="hidden lg:inline">AI去噪</span>
+            <span className="hidden lg:inline">AI降噪</span>
           </button>
 
           {/* Push config */}
@@ -233,58 +221,7 @@ export function TopNav({
             </button>
           )}
 
-          {/* Sound mute toggle */}
-          <div className="relative">
-            <button
-              onClick={onToggleMute}
-              className={cn(
-                "w-8 h-8 rounded-md flex items-center justify-center transition-colors",
-                isMuted
-                  ? "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-                  : "text-primary hover:bg-accent/50"
-              )}
-              aria-label={isMuted ? "取消静音" : "静音"}
-            >
-              {isMuted ? <VolumeX size={15} /> : <Volume2 size={15} />}
-              {!isMuted && (
-                <span className="absolute inset-0 rounded-md border-2 border-primary/40 animate-sound-pulse pointer-events-none" />
-              )}
-            </button>
-          </div>
-
-          {/* Sound settings */}
-          <button
-            onClick={onOpenSoundSettings}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            aria-label="声音设置"
-            title="声音控制中心"
-          >
-            <Settings size={15} />
-          </button>
-
-          <div className="w-px h-5 bg-border/40" />
-
-          {/* Auth / Key */}
-          <button
-            onClick={onOpenAuthDialog}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:text-primary hover:bg-accent/50 transition-colors"
-            title="输入密钥解锁付费功能"
-          >
-            <Key size={14} />
-            <span className="hidden lg:inline">密钥</span>
-          </button>
-
-          {/* Subscribe */}
-          <a
-            href="https://forms.gle/EUa4992WD3K18may5"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
-          >
-            订阅
-          </a>
-
-          {/* Tutorial */}
+          {/* Tutorial / Help */}
           <button
             onClick={onOpenTutorial}
             className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
