@@ -230,18 +230,24 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
   // Rank badge and background color based on rank change
   const delta = item.rankDelta ?? 0
   
-  // 根据排名变化计算呼吸动画：上升显示淡红呼吸，下降显示淡绿呼吸
-  const getRankChangeAnimation = (): string => {
-    if (delta > 0) {
-      // 排名上升 - 淡红色呼吸动画
-      return "animate-rank-up-breath"
-    } else if (delta < 0) {
-      // 排名下降 - 淡绿色呼吸动画
-      return "animate-rank-down-breath"
+  // 根据规则计算左侧边框颜色：
+  // isTempTop（新上榜置顶中）→ 淡绿色闪烁
+  // platformRank <= 3（平台热搜前三）→ 淡黄色静态
+  // rankDelta >= 1 或 isBursting（趋势上升）→ 淡红色静态
+  // 其他 → 无边框
+  const getLeftBorderClass = (): string => {
+    if (isTempTop) {
+      return "border-l-2 border-emerald-400/60 animate-pulse"
     }
-    return ""
+    if (item.platformRank && item.platformRank <= 3) {
+      return "border-l-2 border-yellow-400/40"
+    }
+    if ((item.rankDelta && item.rankDelta >= 1) || item.isBursting) {
+      return "border-l-2 border-red-400/40"
+    }
+    return "border-l-2 border-transparent"
   }
-  const rankChangeAnimation = getRankChangeAnimation()
+  const leftBorderClass = getLeftBorderClass()
   
   const rankBadge = item.platformRank ? (
     <span className="inline-flex items-center gap-1 text-[11px] font-mono">
@@ -258,10 +264,8 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
         "group relative transition-all border-b border-border/30 hover:bg-accent/30",
         isNew && "animate-new-item animate-slide-in",
         isPinned && "pinned-glow bg-primary/[0.03]",
-        scoreLevel === "golden" && !isPinned && "animate-golden-sweep",
-        item.isBursting && "animate-burst",
-        // 排名变化呼吸动画：上升淡红呼吸，下降淡绿呼吸
-        rankChangeAnimation
+        // 左侧边框光效：根据条件显示不同颜色
+        leftBorderClass
       )}
     >
       {/* 新消息闪烁灯条 - 置顶期间显示 */}
@@ -278,7 +282,7 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
       <div 
         className="flex flex-row gap-3 w-full p-4 rounded-xl bg-card/50 dark:bg-white/[0.03] border border-border/30 dark:border-white/[0.07] backdrop-blur-sm"
       >
-        {/* ═══════ 左侧文字区 - 自动填充剩余空间 ═══════ */}
+        {/* ═══════ 左侧文字区 - 自动填充剩��空间 ═══════ */}
         <div 
           className="flex flex-col justify-between min-w-0 flex-1"
         >

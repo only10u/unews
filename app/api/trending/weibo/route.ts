@@ -8,11 +8,24 @@ export async function GET() {
       signal: AbortSignal.timeout(25000),
     })
     if (!res.ok) throw new Error(`upstream ${res.status}`)
-    const raw = await res.json()
+    const rawData = await res.json()
+    
+    // 过滤广告条目
+    const filtered = rawData.filter((item: any) => {
+      // 过滤 is_ad 字段
+      if (item.is_ad) return false
+      // 过滤 ad_type 字段
+      if (item.ad_type && item.ad_type !== 0) return false
+      // 过滤 note 或 icon_desc 中包含广告相关关键词
+      const note = item.note || item.icon_desc || ""
+      if (note.includes("广告") || note.includes("荐") || note.includes("商业")) return false
+      return true
+    })
     
     // Map to NewsItem format expected by frontend
     // 扩展字段映射，覆盖微博API可能的各种字段名
-    const data = raw.map((item: any, i: number) => ({
+    // 过滤后重新编号，确保排名连续
+    const data = filtered.map((item: any, i: number) => ({
       id: `w${i + 1}`,
       title: item.title || item.word || item.note || "",
       hotValue: item.hotValue || item.hot_num || item.num || 0,
