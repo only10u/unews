@@ -27,6 +27,12 @@ export async function GET(request: Request) {
       }
     )
     const html = await res.text()
+    // 找到第一个文章结果区域，截取 3000 字符
+    const startIdx = html.indexOf('txt-box')
+    return NextResponse.json({
+      status: res.status,
+      preview: html.slice(startIdx > 0 ? startIdx - 200 : 2000, startIdx + 3000)
+    })
 
     // 匹配标题：从 <a> 标签的 title 属性或文本内容取
     const titleMatch = html.match(/<a[^>]+uigs="article_title_1"[^>]*title="([^"]+)"/)
