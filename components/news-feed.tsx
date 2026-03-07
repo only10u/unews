@@ -10,6 +10,7 @@ import {
 } from "@/lib/mock-data"
 import { NewsCard } from "./news-card"
 import { HotOverview } from "./hot-overview"
+import { VoiceSettingsDialog, speakText, type VoiceSettings, type SoundType } from "./voice-settings"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   ChevronDown,
@@ -20,6 +21,8 @@ import {
   Pin,
   Volume2,
   VolumeX,
+  Settings,
+  Play,
 } from "lucide-react"
 import Image from "next/image"
 import useSWR from "swr"
@@ -355,6 +358,12 @@ export function NewsFeed({
   const [isUserScrolling, setIsUserScrolling] = useState(false)
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set())
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
+    volume: 80,
+    voiceGender: "female",
+    soundType: "voice",
+  })
   const prevItemsRef = useRef<string[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
   
@@ -448,30 +457,22 @@ export function NewsFeed({
     return () => { el.removeEventListener("scroll", onScroll); clearTimeout(timer) }
   }, [])
 
-  // 语音播报函数
-  const speakNewItem = useCallback((platform: string, title: string) => {
-    console.log("[v0] speakNewItem called:", platform, title)
-    if (typeof window === "undefined" || !window.speechSynthesis) {
-      console.log("[v0] speechSynthesis not available")
-      return
-    }
-    
+  // 语音播报函数 - 使用设置中的配置
+  const speakNewItem = useCallback((platform: string, _title: string) => {
     const platformLabel = platform === "weibo" ? "微博" : platform === "douyin" ? "抖音" : "公众号"
-    const text = `${platformLabel}新消息：${title}`
-    
-    console.log("[v0] Speaking:", text)
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.lang = "zh-CN"
-    utterance.rate = 1.0
-    utterance.pitch = 1.0
-    
-    // 选择中文声音
-    const voices = window.speechSynthesis.getVoices()
-    const zhVoice = voices.find(v => v.lang.includes("zh")) || voices[0]
-    if (zhVoice) utterance.voice = zhVoice
-    
-    window.speechSynthesis.speak(utterance)
-  }, [])
+    // 只播报平台名称，不播报标题内容
+    const text = `${platformLabel}新消息`
+    speakText(text, voiceSettings)
+  }, [voiceSettings])
+
+  // 测试播报 - 播报当前板块
+  const handleTestVoice = useCallback(() => {
+    const platformLabel = 
+      activeChannel === "weibo" ? "微博" :
+      activeChannel === "douyin" ? "抖音" :
+      activeChannel === "gongzhonghao" ? "公众号" : "热搜"
+    speakText(`${platformLabel}新消息`, voiceSettings)
+  }, [activeChannel, voiceSettings])
 
   // Detect new items for animation + queue mode + voice broadcast
   useEffect(() => {
@@ -484,10 +485,8 @@ export function NewsFeed({
       const timer = setTimeout(() => setNewItemIds(new Set()), 5000)
       
       // 语音播报新上榜热搜（仅在非静音状态下）
-      console.log("[v0] New items detected:", brandNew.length, "isMuted:", isMuted)
       if (!isMuted) {
         const newItems = allItems.filter(item => brandNew.includes(item.id))
-        console.log("[v0] Will speak first new item:", newItems[0]?.title)
         // 只播报第一条新上榜的，避免连续播报太多
         if (newItems.length > 0) {
           speakNewItem(newItems[0].platform, newItems[0].title)
@@ -638,23 +637,39 @@ export function NewsFeed({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* 音频播报按钮 */}
-            <button
-              onClick={onToggleMute}
-              className={cn(
-                "relative flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all",
-                isMuted
-                  ? "bg-secondary text-muted-foreground hover:text-foreground hover:bg-accent"
-                  : "bg-primary/20 text-primary ring-1 ring-primary/30"
-              )}
-              title={isMuted ? "开启语音播报" : "关闭语音播报"}
-            >
-              {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-              <span className="hidden sm:inline">{isMuted ? "语音" : "播报中"}</span>
-              {!isMuted && (
-                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              )}
-            </button>
+            {/* 音频播报按钮组 */}
+            <div className="flex items-center gap-0.5 bg-secondary/50 rounded-lg p-0.5">
+              <button
+                onClick={onToggleMute}
+                className={cn(
+                  "relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all",
+                  isMuted
+                    ? "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    : "bg-primary/20 text-primary"
+                )}
+                title={isMuted ? "开启语音播报" : "关闭语音播报"}
+              >
+                {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                <span className="hidden sm:inline">{isMuted ? "语音" : "播报中"}</span>
+                {!isMuted && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                )}
+              </button>
+              <button
+                onClick={handleTestVoice}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                title="测试播报"
+              >
+                <Play size={12} />
+              </button>
+              <button
+                onClick={() => setVoiceSettingsOpen(true)}
+                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                title="语音设置"
+              >
+                <Settings size={12} />
+              </button>
+            </div>
 
             <button
               onClick={handleManualRefresh}
@@ -795,6 +810,16 @@ export function NewsFeed({
 
         </div>
       </div>
+
+      {/* 语音设置弹窗 */}
+      <VoiceSettingsDialog
+        isOpen={voiceSettingsOpen}
+        onClose={() => setVoiceSettingsOpen(false)}
+        settings={voiceSettings}
+        onSettingsChange={setVoiceSettings}
+        activeChannel={activeChannel}
+        onTest={handleTestVoice}
+      />
     </div>
   )
 }

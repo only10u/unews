@@ -13,6 +13,10 @@ import {
   Sparkles,
   Clock,
   Flame,
+  Bitcoin,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
 } from "lucide-react"
 
 interface HotOverviewProps {
@@ -35,6 +39,14 @@ interface MemeItem {
   title: string
   platform: string
   reason: string
+}
+
+interface CryptoImpactItem {
+  id: string
+  title: string
+  platform: string
+  impact: string
+  direction: "利好" | "利空" | "中性"
 }
 
 function getPlatformColor(p: string): string {
@@ -68,9 +80,10 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   const [copied, setCopied] = useState(false)
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [memeItems, setMemeItems] = useState<MemeItem[]>([])
+  const [cryptoItems, setCryptoItems] = useState<CryptoImpactItem[]>([])
   const [isLoadingMeme, setIsLoadingMeme] = useState(false)
-
-  console.log("[v0] HotOverview rendered, items count:", items.length)
+  const [isLoadingCrypto, setIsLoadingCrypto] = useState(false)
+  const [hasInitialized, setHasInitialized] = useState(false)
 
   // 计算趋势变化数据
   const trendItems = useMemo<TrendItem[]>(() => {
@@ -117,7 +130,6 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   // 获取Meme潜力榜
   const fetchMemePotential = useCallback(async () => {
     if (items.length === 0) return
-    console.log("[v0] Fetching meme potential, items:", items.length)
     setIsLoadingMeme(true)
     try {
       const res = await fetch("/api/ai/meme-potential", {
@@ -131,28 +143,62 @@ export function HotOverview({ items, className }: HotOverviewProps) {
           })),
         }),
       })
-      console.log("[v0] Meme API response status:", res.status)
       if (res.ok) {
         const data = await res.json()
-        console.log("[v0] Meme data received:", data)
         setMemeItems(data.memes || [])
       }
     } catch (e) {
-      console.error("[v0] Failed to fetch meme potential:", e)
+      console.error("Failed to fetch meme potential:", e)
     } finally {
       setIsLoadingMeme(false)
     }
   }, [items])
 
-  // 每10分钟刷新一次
+  // 获取币价影响分析
+  const fetchCryptoImpact = useCallback(async () => {
+    if (items.length === 0) return
+    setIsLoadingCrypto(true)
+    try {
+      const res = await fetch("/api/ai/crypto-impact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.slice(0, 30).map(i => ({
+            id: i.id,
+            title: i.title,
+            platform: i.platform,
+          })),
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setCryptoItems(data.cryptoNews || [])
+      }
+    } catch (e) {
+      console.error("Failed to fetch crypto impact:", e)
+    } finally {
+      setIsLoadingCrypto(false)
+    }
+  }, [items])
+
+  // 页面加载时立即获取数据，然后每10分钟刷新
   useEffect(() => {
-    fetchMemePotential()
+    if (items.length > 0 && !hasInitialized) {
+      setHasInitialized(true)
+      fetchMemePotential()
+      fetchCryptoImpact()
+    }
+  }, [items.length, hasInitialized, fetchMemePotential, fetchCryptoImpact])
+
+  // 每10分钟自动刷新
+  useEffect(() => {
     const interval = setInterval(() => {
       setLastUpdate(new Date())
       fetchMemePotential()
-    }, 10 * 60 * 1000) // 10分钟
+      fetchCryptoImpact()
+    }, 10 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [fetchMemePotential])
+  }, [fetchMemePotential, fetchCryptoImpact])
 
   // 一键复制
   const handleCopy = useCallback(() => {
@@ -166,17 +212,20 @@ export function HotOverview({ items, className }: HotOverviewProps) {
     
     const memeText = memeItems.map(m => `${m.title}\n理由：${m.reason}`).join("\n\n")
     
-    const fullText = `【趋势变化】\n${trendText}\n\n【Meme潜力榜】\n${memeText}`
+    const cryptoText = cryptoItems.map(c => `[${c.direction}] ${c.title}\n影响：${c.impact}`).join("\n\n")
+    
+    const fullText = `【趋势变化】\n${trendText}\n\n【Meme潜力榜】\n${memeText}\n\n【币价影响】\n${cryptoText}`
     
     navigator.clipboard.writeText(fullText)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [trendItems, memeItems])
+  }, [trendItems, memeItems, cryptoItems])
 
   const handleRefresh = useCallback(() => {
     setLastUpdate(new Date())
     fetchMemePotential()
-  }, [fetchMemePotential])
+    fetchCryptoImpact()
+  }, [fetchMemePotential, fetchCryptoImpact])
 
   return (
     <div className={cn("border-t border-border/30 bg-card/50", className)}>
@@ -291,6 +340,57 @@ export function HotOverview({ items, className }: HotOverviewProps) {
                     </p>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* 币价影响 */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Bitcoin size={14} className="text-amber-500" />
+              <h4 className="text-sm font-semibold text-foreground">币价影响</h4>
+              <span className="text-[10px] text-muted-foreground">24h内可能影响币价的新闻</span>
+            </div>
+            
+            {isLoadingCrypto ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <RefreshCw size={12} className="animate-spin" />
+                <span>AI正在分析...</span>
+              </div>
+            ) : cryptoItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无可能影响币价的新闻</p>
+            ) : (
+              <div className="space-y-3">
+                {cryptoItems.map((item, idx) => {
+                  const directionConfig = {
+                    "利好": { icon: ArrowUpRight, color: "text-emerald-500", bg: "bg-emerald-500/10 border-emerald-500/20" },
+                    "利空": { icon: ArrowDownRight, color: "text-red-500", bg: "bg-red-500/10 border-red-500/20" },
+                    "中性": { icon: Minus, color: "text-gray-500", bg: "bg-gray-500/10 border-gray-500/20" },
+                  }[item.direction] || { icon: Minus, color: "text-gray-500", bg: "bg-gray-500/10 border-gray-500/20" }
+                  const DirIcon = directionConfig.icon
+
+                  return (
+                    <div
+                      key={item.id || idx}
+                      className={cn("p-3 rounded-lg border", directionConfig.bg)}
+                    >
+                      <div className="flex items-start gap-2">
+                        <DirIcon size={16} className={cn("mt-0.5 shrink-0", directionConfig.color)} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={cn("text-xs font-bold", directionConfig.color)}>{item.direction}</span>
+                            <span className="text-xs text-muted-foreground">[{getPlatformLabel(item.platform)}]</span>
+                          </div>
+                          <p className="text-sm font-medium text-foreground mb-1">{item.title}</p>
+                          <p className="text-[12px] text-muted-foreground">
+                            <span className="text-amber-500 font-medium">影响：</span>
+                            {item.impact}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
