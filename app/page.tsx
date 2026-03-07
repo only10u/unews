@@ -8,6 +8,7 @@ import { HotSidebar } from "@/components/hot-sidebar"
 import { TickerTape } from "@/components/ticker-tape"
 import { SoundControl } from "@/components/sound-control"
 import { AuthDialog } from "@/components/auth-dialog"
+import { AuthGate } from "@/components/auth-gate"
 
 // AudioUnlockOverlay removed - no longer prompting for audio permission
 import { TutorialDialog } from "@/components/tutorial-dialog"
@@ -163,6 +164,7 @@ export default function HomePage() {
   }, [sidebarCollapsed, isMobile])
 
   return (
+    <AuthGate>
     <div className="min-h-screen bg-background">
       {/* Top Navigation */}
       <TopNav
@@ -236,5 +238,6 @@ export default function HomePage() {
 
 
     </div>
+    </AuthGate>
   )
 }

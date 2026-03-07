@@ -134,7 +134,7 @@ export default function AdminPage() {
 
   // Persist session - restore from sessionStorage
   useEffect(() => {
-    const saved = sessionStorage.getItem("admin-token")
+    const saved = sessionStorage.getItem("admin_token")
     if (saved) {
       tokenRef.current = saved // sync immediately so fetcher has it
       setAdminToken(saved)
@@ -145,21 +145,21 @@ export default function AdminPage() {
   const handleLogin = async () => {
     setLoginError("")
     try {
-      const res = await fetch("/api/admin/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })
-      if (res.ok) {
-        const { token } = await res.json()
-        tokenRef.current = token // sync immediately so fetcher has it
-        setAdminToken(token)
-        sessionStorage.setItem("admin-token", token)
+      const res = await fetch("/api/admin?action=login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) })
+      const data = await res.json()
+      if (data.success && data.token) {
+        tokenRef.current = data.token // sync immediately so fetcher has it
+        setAdminToken(data.token)
+        sessionStorage.setItem("admin_token", data.token)
         setIsAuthed(true)
-      } else { setLoginError("密码错误，请重试") }
+      } else { setLoginError(data.error || "密码错误，请重试") }
     } catch { setLoginError("网络连接失败") }
   }
 
   const handleLogout = () => {
     setIsAuthed(false)
     setAdminToken("")
-    sessionStorage.removeItem("admin-token")
+    sessionStorage.removeItem("admin_token")
   }
 
   const handleGenerateKey = async () => {
