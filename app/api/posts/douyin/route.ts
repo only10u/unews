@@ -25,9 +25,16 @@ export async function GET(request: Request) {
 
     // 从 __NEXT_DATA__ 提取视频数据
     const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
-    if (!nextDataMatch) return NextResponse.json({ success: false, error: "no next data" })
+    if (!nextDataMatch) {
+      console.log('douyin: no __NEXT_DATA__ found, html preview:', html.slice(0, 500))
+      return NextResponse.json({ success: false, error: "no next data" })
+    }
 
     const nextData = JSON.parse(nextDataMatch[1])
+    const pageProps = nextData?.props?.pageProps || {}
+    console.log('douyin pageProps keys:', JSON.stringify(Object.keys(pageProps)))
+    console.log('douyin pageProps sample:', JSON.stringify(pageProps).slice(0, 800))
+
     const videoList =
       nextData?.props?.pageProps?.videoList ||
       nextData?.props?.pageProps?.data?.videoList ||

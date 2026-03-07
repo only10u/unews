@@ -27,6 +27,7 @@ export async function GET(request: Request) {
       }
     )
     const html = await res.text()
+    console.log('sogou html:', html.slice(0, 1500))
 
     // 解析公众号名称
     const accountMatch = html.match(/class="tit"[^>]*>([^<]+)</)
