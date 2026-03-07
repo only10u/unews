@@ -415,12 +415,12 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
             </a>
           )}
 
-          {/* 正文摘要 - 3行截断 */}
+          {/* 正文摘要 - 3行截断，字体大小由 fontSize prop 控制 */}
           {isValidString(contentText) && (
             <p 
               className="mb-3"
               style={{ 
-                fontSize: '13px', 
+                fontSize: `${fontSize}px`, 
                 color: '#AAAAAA', 
                 lineHeight: '1.6',
                 overflow: 'hidden',

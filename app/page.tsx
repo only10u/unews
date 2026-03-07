@@ -8,7 +8,7 @@ import { HotSidebar } from "@/components/hot-sidebar"
 import { TickerTape } from "@/components/ticker-tape"
 import { SoundControl } from "@/components/sound-control"
 import { AuthDialog } from "@/components/auth-dialog"
-import { PushConfig } from "@/components/push-config"
+
 // AudioUnlockOverlay removed - no longer prompting for audio permission
 import { TutorialDialog } from "@/components/tutorial-dialog"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -40,7 +40,7 @@ export default function HomePage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [soundSettingsOpen, setSoundSettingsOpen] = useState(false)
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
-  const [pushConfigOpen, setPushConfigOpen] = useState(false)
+
   const [tutorialOpen, setTutorialOpen] = useState(false)
   const [isAuthed, setIsAuthed] = useState(true) // Temporarily: all users have full access
   const [aiDenoiseEnabled, setAiDenoiseEnabled] = useState(false)
@@ -168,7 +168,6 @@ export default function HomePage() {
       <TopNav
         activeChannel={activeChannel}
         onChannelChange={handleChannelChange}
-        onOpenPushConfig={() => setPushConfigOpen(true)}
         onOpenTutorial={() => setTutorialOpen(true)}
         aiDenoiseEnabled={aiDenoiseEnabled}
         onToggleAiDenoise={handleToggleAiDenoise}
@@ -235,15 +234,7 @@ export default function HomePage() {
         onClose={() => setTutorialOpen(false)}
       />
 
-      {/* Push Config Dialog */}
-      <PushConfig
-        isOpen={pushConfigOpen}
-        onClose={() => setPushConfigOpen(false)}
-        scoreThreshold={scoreThreshold}
-        onScoreThresholdChange={setScoreThreshold}
-        keywords={keywords}
-        onKeywordsChange={setKeywords}
-      />
+
     </div>
   )
 }

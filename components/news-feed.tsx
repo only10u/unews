@@ -22,7 +22,6 @@ import {
   Volume2,
   VolumeX,
   Settings,
-  Play,
 } from "lucide-react"
 import Image from "next/image"
 import useSWR from "swr"
@@ -791,7 +790,7 @@ export function NewsFeed({
               <button
                 onClick={onToggleMute}
                 className={cn(
-                  "relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all",
+                  "relative flex items-center justify-center w-8 h-8 rounded-md transition-all",
                   isMuted
                     ? "text-muted-foreground hover:text-foreground hover:bg-accent"
                     : "bg-primary/20 text-primary"
@@ -799,17 +798,16 @@ export function NewsFeed({
                 title={isMuted ? "开启语音播报" : "关闭语音播报"}
               >
                 {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                <span className="hidden sm:inline">{isMuted ? "语音" : "播��中"}</span>
                 {!isMuted && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
               </button>
               <button
                 onClick={handleTestVoice}
-                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                className="px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
                 title="测试播报"
               >
-                <Play size={12} />
+                测试
               </button>
               <button
                 onClick={() => setVoiceSettingsOpen(true)}

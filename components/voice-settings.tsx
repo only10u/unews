@@ -6,7 +6,6 @@ import {
   X,
   Volume2,
   Play,
-  User,
   Settings2,
 } from "lucide-react"
 
@@ -284,40 +283,7 @@ export function VoiceSettingsDialog({
             </div>
           </div>
 
-          {/* 人声设置（仅在选择人声时显示） */}
-          {localSettings.soundType === "voice" && (
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-3">
-                声音性别
-              </label>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, voiceGender: "female" })}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-all",
-                    localSettings.voiceGender === "female"
-                      ? "bg-pink-500/10 border-pink-500 text-pink-500"
-                      : "bg-secondary/50 border-border hover:border-pink-500/50"
-                  )}
-                >
-                  <User size={16} />
-                  <span className="font-medium">女声</span>
-                </button>
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, voiceGender: "male" })}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-all",
-                    localSettings.voiceGender === "male"
-                      ? "bg-blue-500/10 border-blue-500 text-blue-500"
-                      : "bg-secondary/50 border-border hover:border-blue-500/50"
-                  )}
-                >
-                  <User size={16} />
-                  <span className="font-medium">男声</span>
-                </button>
-              </div>
-            </div>
-          )}
+
         </div>
 
         {/* Footer */}
