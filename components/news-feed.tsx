@@ -313,10 +313,27 @@ function trendingToNewsItems(
     const originalTimestamp = parseOriginalTimestamp(item)
     
     if (!firstSeenAt) {
+      // 先尝试从 localStorage 读取
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem(`firstSeen_${id}`)
+        if (stored) {
+          firstSeenAt = parseInt(stored, 10)
+          if (firstSeenMap) {
+            firstSeenMap.set(id, firstSeenAt)
+          }
+        }
+      }
+    }
+    
+    if (!firstSeenAt) {
       // 优先使用原始时间戳，否则记录当前时间作为首次发现时间
       firstSeenAt = originalTimestamp || Date.now()
       if (firstSeenMap) {
         firstSeenMap.set(id, firstSeenAt)
+      }
+      // 持久化到 localStorage
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`firstSeen_${id}`, String(firstSeenAt))
       }
     }
     const timestamp = formatRelativeTime(firstSeenAt)
@@ -457,7 +474,32 @@ export function NewsFeed({
   const stableCache = useRef<Map<string, NewsItem>>(new Map())
   
   // 修复8: 首次发现时间Map - 用于准确显示上榜时间
+  // 使用 localStorage 持久化，避免组件卸载重挂时丢失
   const firstSeenMap = useRef<Map<string, number>>(new Map())
+  
+  // 从 localStorage 加载 firstSeenMap 数据
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const map = firstSeenMap.current
+    const now = Date.now()
+    const MAX_AGE = 48 * 60 * 60 * 1000 // 48小时
+    
+    // 清理超过48小时的旧记录
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (key?.startsWith("firstSeen_")) {
+        const val = parseInt(localStorage.getItem(key) || "0", 10)
+        if (now - val > MAX_AGE) {
+          keysToRemove.push(key)
+        } else {
+          const id = key.replace("firstSeen_", "")
+          map.set(id, val)
+        }
+      }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k))
+  }, [])
 
   const handleTogglePin = useCallback((id: string) => {
     setPinnedIds((prev) => {
@@ -574,6 +616,10 @@ export function NewsFeed({
     const currentIds = allItems.map((i) => i.id)
     const prevIds = prevItemsRef.current
     const brandNew = currentIds.filter((id) => !prevIds.includes(id))
+    
+    // 修复4: 先更新 prevRef，无论是否有新内容，避免状态不同步
+    prevItemsRef.current = currentIds
+    
     if (brandNew.length > 0 && prevIds.length > 0) {
       // 新消息高亮动画
       setNewItemIds(new Set(brandNew))
@@ -597,7 +643,6 @@ export function NewsFeed({
         clearTimeout(topTimer)
       }
     }
-    prevItemsRef.current = currentIds
   }, [allItems, isUserScrolling, isMuted, speakNewItem])
 
   const handleViewPending = useCallback(() => {
@@ -749,7 +794,7 @@ export function NewsFeed({
 
           <div className="flex items-center gap-2">
             {/* 音频播报按钮组 */}
-            <div className="flex items-center gap-0.5 bg-secondary/50 rounded-lg p-0.5">
+            <div className="flex items-center gap-0.5 bg-secondary/50 rounded-lg p-0.5 shrink-0">
               <button
                 onClick={onToggleMute}
                 className={cn(
