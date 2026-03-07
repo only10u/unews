@@ -173,20 +173,17 @@ export function HotOverview({ items, className }: HotOverviewProps) {
                           {statusInfo.text}
                         </span>
                       )}
-                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-                        {item.prevRank !== null ? (
-                          <>
-                            #{item.prevRank}→#{item.rank}
-                            {item.rankChange > 0 && (
-                              <span className="text-emerald-500 ml-1">
-                                <TrendingUp size={10} className="inline" />{item.rankChange}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </span>
+                      {item.prevRank !== null && (
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+                          #{item.prevRank}→#{item.rank}
+                          {item.rankChange > 0 && (
+                            <span className="text-emerald-500 ml-0.5">上升{item.rankChange}名</span>
+                          )}
+                          {item.rankChange < 0 && (
+                            <span className="text-red-400 ml-0.5">下降{Math.abs(item.rankChange)}名</span>
+                          )}
+                        </span>
+                      )}
                       <ExternalLink size={10} className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" />
                     </a>
                   )

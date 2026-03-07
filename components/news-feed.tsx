@@ -607,35 +607,29 @@ export function NewsFeed({
   useEffect(() => {
     const currentIds = allItems.map((i) => i.id)
     const prevIds = prevItemsRef.current
-    const brandNew = currentIds.filter((id) => !prevIds.includes(id))
-    
-    // 修复4: 先更新 prevRef，无论是否有新内容，避免状态不同步
+    // 必须在最顶部无条件执行，确保状态同步
     prevItemsRef.current = currentIds
     
+    const brandNew = currentIds.filter((id) => !prevIds.includes(id))
+    
     if (brandNew.length > 0 && prevIds.length > 0) {
-      // 新消息高亮动画
-      setNewItemIds(new Set(brandNew))
-      const highlightTimer = setTimeout(() => setNewItemIds(new Set()), 10000)
-      
-      // 新消息临时置顶10秒
+      // 设置新消息高亮和临时置顶
       setTempTopIds(new Set(brandNew))
-      const topTimer = setTimeout(() => setTempTopIds(new Set()), 10000)
+      setNewItemIds(new Set(brandNew))
+      
+      // 10秒后清除高亮和置顶
+      const t1 = setTimeout(() => setTempTopIds(new Set()), 10000)
+      const t2 = setTimeout(() => setNewItemIds(new Set()), 10000)
       
       // 语音播报新上榜热搜（仅在非静音状态下）
       if (!isMuted) {
-        const newItems = allItems.filter(item => brandNew.includes(item.id))
-        // 只播报第一条新上榜的，避免连续播报太多
-        if (newItems.length > 0) {
-          speakNewItem(newItems[0].platform, newItems[0].title)
-        }
+        const first = allItems.find(i => brandNew.includes(i.id))
+        if (first) speakNewItem(first.platform, first.title)
       }
       
-      return () => {
-        clearTimeout(highlightTimer)
-        clearTimeout(topTimer)
-      }
+      return () => { clearTimeout(t1); clearTimeout(t2) }
     }
-  }, [allItems, isUserScrolling, isMuted, speakNewItem])
+  }, [allItems, isMuted, speakNewItem])
 
   const handleViewPending = useCallback(() => {
     setPendingCount(0)
