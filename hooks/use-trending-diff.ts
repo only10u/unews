@@ -25,10 +25,11 @@ export interface TrendingDiffData {
   }
 }
 
-// 获取趋势变化数据
+// 获取趋势变化数据 - 通过本地API代理路由请求，避免HTTPS页面请求HTTP资源产生混合内容错误
 async function fetchTrendingDiff(): Promise<TrendingDiffData | null> {
   try {
-    const res = await fetch("http://1.12.248.87:3003/trending/diff", {
+    // 使用本地代理路由，不直接请求 http://1.12.248.87:3003
+    const res = await fetch("/api/trending/diff", {
       signal: AbortSignal.timeout(10000),
     })
     if (!res.ok) return null

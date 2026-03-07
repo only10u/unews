@@ -7,7 +7,6 @@ import {
   Sun,
   Moon,
   Filter,
-  Bell,
   Type,
   Minus,
   Plus,
@@ -24,7 +23,6 @@ export interface FontSettings {
 interface TopNavProps {
   activeChannel: Platform
   onChannelChange: (channel: Platform) => void
-  onOpenPushConfig?: () => void
   onOpenTutorial?: () => void
   aiDenoiseEnabled?: boolean
   onToggleAiDenoise?: () => void
@@ -44,7 +42,6 @@ const channels: { key: Platform; label: string; icon?: string }[] = [
 export function TopNav({
   activeChannel,
   onChannelChange,
-  onOpenPushConfig,
   onOpenTutorial,
   aiDenoiseEnabled = false,
   onToggleAiDenoise,
@@ -138,17 +135,7 @@ export function TopNav({
             <span className="hidden lg:inline">AI降噪</span>
           </button>
 
-          {/* Push config */}
-          <button
-            onClick={onOpenPushConfig}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-            aria-label="推送配置"
-            title="推送触发器配置"
-          >
-            <Bell size={15} />
-          </button>
 
-          <div className="w-px h-5 bg-border/40" />
 
           {/* Font Size Settings */}
           <div className="relative" ref={fontMenuRef}>

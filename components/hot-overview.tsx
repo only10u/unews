@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useTrendingDiff, type TrendingDiffItem } from "@/hooks/use-trending-diff"
 import {
@@ -10,7 +10,6 @@ import {
   Check,
   RefreshCw,
   TrendingUp,
-  Sparkles,
   Clock,
   Flame,
   ExternalLink,
@@ -19,13 +18,6 @@ import {
 interface HotOverviewProps {
   items: { id: string; title: string; platform: string }[]
   className?: string
-}
-
-interface MemeItem {
-  id: string
-  title: string
-  platform: string
-  reason: string
 }
 
 function getPlatformColor(p: string): string {
@@ -69,9 +61,6 @@ function formatLastUpdate(dateStr: string): string {
 export function HotOverview({ items, className }: HotOverviewProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [memeItems, setMemeItems] = useState<MemeItem[]>([])
-  const [isLoadingMeme, setIsLoadingMeme] = useState(false)
-  const [hasInitialized, setHasInitialized] = useState(false)
 
   // 使用共享的趋势变化数据
   const { all: trendItems, lastUpdate, isLoading: isTrendLoading, refresh: refreshTrend } = useTrendingDiff()
@@ -80,50 +69,6 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   const displayTrendItems = useMemo(() => {
     return trendItems.slice(0, 10)
   }, [trendItems])
-
-  // 获取Meme潜力榜
-  const fetchMemePotential = useCallback(async () => {
-    // 使用 trendItems 中的标题列表
-    const titleList = trendItems.slice(0, 30).map(t => ({
-      id: t.title,
-      title: t.title,
-      platform: t.platform,
-    }))
-    
-    if (titleList.length === 0) return
-    setIsLoadingMeme(true)
-    try {
-      const res = await fetch("/api/ai/meme-potential", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: titleList }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setMemeItems(data.memes || [])
-      }
-    } catch (e) {
-      console.error("Failed to fetch meme potential:", e)
-    } finally {
-      setIsLoadingMeme(false)
-    }
-  }, [trendItems])
-
-  // 页面加载时立即获取数据
-  useEffect(() => {
-    if (trendItems.length > 0 && !hasInitialized) {
-      setHasInitialized(true)
-      fetchMemePotential()
-    }
-  }, [trendItems.length, hasInitialized, fetchMemePotential])
-
-  // 每10分钟刷新Meme潜力榜
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchMemePotential()
-    }, 10 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [fetchMemePotential])
 
   // 一键复制
   const handleCopy = useCallback(() => {
@@ -135,19 +80,16 @@ export function HotOverview({ items, className }: HotOverviewProps) {
       return `[${getPlatformLabel(t.platform)}] ${t.title}   ${statusLabel}   ${rankChange}`
     }).join("\n")
     
-    const memeText = memeItems.map(m => `${m.title}\n理由：${m.reason}`).join("\n\n")
-    
-    const fullText = `【趋势变化】\n${trendText}\n\n【Meme潜力榜】\n${memeText}`
+    const fullText = `【趋势变化】\n${trendText}`
     
     navigator.clipboard.writeText(fullText)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [displayTrendItems, memeItems])
+  }, [displayTrendItems])
 
   const handleRefresh = useCallback(() => {
     refreshTrend()
-    fetchMemePotential()
-  }, [refreshTrend, fetchMemePotential])
+  }, [refreshTrend])
 
   return (
     <div className={cn("border-t border-border/30 bg-card/50", className)}>
@@ -172,7 +114,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
               className="p-1.5 rounded-md hover:bg-accent transition-colors"
               title="刷新"
             >
-              <RefreshCw size={12} className={cn((isTrendLoading || isLoadingMeme) && "animate-spin")} />
+              <RefreshCw size={12} className={cn(isTrendLoading && "animate-spin")} />
             </button>
             <button
               onClick={handleCopy}
@@ -231,20 +173,17 @@ export function HotOverview({ items, className }: HotOverviewProps) {
                           {statusInfo.text}
                         </span>
                       )}
-                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">
-                        {item.prevRank !== null ? (
-                          <>
-                            #{item.prevRank}→#{item.rank}
-                            {item.rankChange > 0 && (
-                              <span className="text-emerald-500 ml-1">
-                                <TrendingUp size={10} className="inline" />{item.rankChange}
-                              </span>
-                            )}
-                          </>
-                        ) : (
-                          "—"
-                        )}
-                      </span>
+                      {item.prevRank !== null && (
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
+                          #{item.prevRank}→#{item.rank}
+                          {item.rankChange > 0 && (
+                            <span className="text-emerald-500 ml-0.5">上升{item.rankChange}名</span>
+                          )}
+                          {item.rankChange < 0 && (
+                            <span className="text-red-400 ml-0.5">下降{Math.abs(item.rankChange)}名</span>
+                          )}
+                        </span>
+                      )}
                       <ExternalLink size={10} className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" />
                     </a>
                   )
@@ -253,38 +192,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
             )}
           </div>
 
-          {/* Meme潜力榜 */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={14} className="text-primary" />
-              <h4 className="text-sm font-semibold text-foreground">Meme 潜力榜</h4>
-              <span className="text-[10px] text-muted-foreground">({memeItems.length}条)</span>
-            </div>
-            
-            {isLoadingMeme ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <RefreshCw size={12} className="animate-spin" />
-                <span>AI正在分析...</span>
-              </div>
-            ) : memeItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无Meme潜力新闻</p>
-            ) : (
-              <div className="space-y-3">
-                {memeItems.map((item, idx) => (
-                  <div
-                    key={item.id || idx}
-                    className="p-3 rounded-lg bg-primary/5 border border-primary/10"
-                  >
-                    <p className="text-sm font-medium text-foreground mb-1">{item.title}</p>
-                    <p className="text-[12px] text-muted-foreground">
-                      <span className="text-primary font-medium">理由：</span>
-                      {item.reason}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+
         </div>
       )}
     </div>

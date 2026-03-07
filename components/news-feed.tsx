@@ -22,7 +22,6 @@ import {
   Volume2,
   VolumeX,
   Settings,
-  Play,
 } from "lucide-react"
 import Image from "next/image"
 import useSWR from "swr"
@@ -209,6 +208,51 @@ function mergeNewsItem(existing: NewsItem | undefined, newItem: NewsItem): NewsI
   }
 }
 
+/** 解析原始时间戳字段（支持多种格式） */
+function parseOriginalTimestamp(item: TrendingItem): number | null {
+  // 尝试多种可能的时间戳字段名
+  const timeFields = [
+    (item as any).pubDate,
+    (item as any).created_at,
+    (item as any).createdAt,
+    (item as any).publish_time,
+    (item as any).publishTime,
+    (item as any).time,
+    (item as any).timestamp,
+    (item as any).update_time,
+    (item as any).updateTime,
+  ]
+  
+  for (const field of timeFields) {
+    if (!field) continue
+    
+    // 如果是数字（Unix时间戳，秒或毫秒）
+    if (typeof field === "number") {
+      // 判断是秒还是毫秒
+      return field > 1e12 ? field : field * 1000
+    }
+    
+    // 如果是字符串，尝试解析
+    if (typeof field === "string") {
+      const parsed = Date.parse(field)
+      if (!isNaN(parsed)) return parsed
+      
+      // 尝试解析 "x分钟前" 格式
+      const minMatch = field.match(/(\d+)\s*分钟前/)
+      if (minMatch) {
+        return Date.now() - parseInt(minMatch[1], 10) * 60 * 1000
+      }
+      
+      const hourMatch = field.match(/(\d+)\s*小时前/)
+      if (hourMatch) {
+        return Date.now() - parseInt(hourMatch[1], 10) * 60 * 60 * 1000
+      }
+    }
+  }
+  
+  return null
+}
+
 /** 格式化时间戳为相对时间 */
 function formatRelativeTime(firstSeenAt: number): string {
   const now = Date.now()
@@ -260,11 +304,26 @@ function trendingToNewsItems(
 
     const id = `${platform}-trending-${item.id}`
     
-    // 修复8: 使用首次发现时间计算相对时间
-    // 优先使用缓存中的首次发现时间，没有则记录当前时间
+    // 修复3: 优先使用接口返回的原始时间戳
+    // 1. 首先尝试从接口数据中解析原始时间戳（pubDate, created_at等）
+    // 2. 如果没有原始时间戳，则使用首次发现时间
+    // 3. 已有记录不覆盖，避免轮询刷新时间覆盖真实上榜时间
     let firstSeenAt = firstSeenMap?.get(id)
+    const originalTimestamp = parseOriginalTimestamp(item)
+    
     if (!firstSeenAt) {
-      firstSeenAt = Date.now()
+      // 先尝试从 localStorage 读取，有则沿用，无则记录当前时间
+      try {
+        const stored = typeof window !== "undefined" ? localStorage.getItem(`fs_${id}`) : null
+        firstSeenAt = stored ? parseInt(stored, 10) : (originalTimestamp || Date.now())
+        // 如果localStorage没有存储，则写入
+        if (!stored && typeof window !== "undefined") {
+          localStorage.setItem(`fs_${id}`, String(firstSeenAt))
+        }
+      } catch {
+        firstSeenAt = originalTimestamp || Date.now()
+      }
+      // 更新内存缓存
       if (firstSeenMap) {
         firstSeenMap.set(id, firstSeenAt)
       }
@@ -358,7 +417,7 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             imageUrl: item.imageUrl || item.imageurl || (item as any).cover || (item as any).pic || "",
             videoUrl: item.videoUrl || "",
             mediaType: item.mediaType,
-            // 作者：覆盖更多可能的字段名，包括user对象
+            // 作���：覆盖更多可能的字段名，包括user对象
             topAuthor: item.author || item.authorName || item.topAuthor || item.nickname || item.user?.screen_name || "",
             // 头像：覆盖更多可能的字段名，包括user对象
             topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || item.avatar || item.user?.profile_image_url || item.user?.avatar || "",
@@ -407,7 +466,32 @@ export function NewsFeed({
   const stableCache = useRef<Map<string, NewsItem>>(new Map())
   
   // 修复8: 首次发现时间Map - 用于准确显示上榜时间
+  // 使用 localStorage 持久化，避免组件卸载重挂时丢失
   const firstSeenMap = useRef<Map<string, number>>(new Map())
+  
+  // 从 localStorage 加载 firstSeenMap 数据并清理旧记录
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const map = firstSeenMap.current
+      const now = Date.now()
+      const MAX_AGE = 72 * 60 * 60 * 1000 // 72小时
+      
+      // 清理超过72小时的旧记录，同时加载有效记录
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i)
+        if (key?.startsWith("fs_")) {
+          const val = parseInt(localStorage.getItem(key) || "0", 10)
+          if (now - val > MAX_AGE) {
+            localStorage.removeItem(key)
+          } else {
+            const id = key.replace("fs_", "")
+            map.set(id, val)
+          }
+        }
+      }
+    } catch { /* ignore localStorage errors */ }
+  }, [])
 
   const handleTogglePin = useCallback((id: string) => {
     setPinnedIds((prev) => {
@@ -523,32 +607,29 @@ export function NewsFeed({
   useEffect(() => {
     const currentIds = allItems.map((i) => i.id)
     const prevIds = prevItemsRef.current
+    // 必须在最顶部无条件执行，确保状态同步
+    prevItemsRef.current = currentIds
+    
     const brandNew = currentIds.filter((id) => !prevIds.includes(id))
+    
     if (brandNew.length > 0 && prevIds.length > 0) {
-      // 新消息高亮动画
-      setNewItemIds(new Set(brandNew))
-      const highlightTimer = setTimeout(() => setNewItemIds(new Set()), 5000)
-      
-      // 新消息临时置顶3秒
+      // 设置新消息高亮和临时置顶
       setTempTopIds(new Set(brandNew))
-      const topTimer = setTimeout(() => setTempTopIds(new Set()), 3000)
+      setNewItemIds(new Set(brandNew))
+      
+      // 10秒后清除高亮和置顶
+      const t1 = setTimeout(() => setTempTopIds(new Set()), 10000)
+      const t2 = setTimeout(() => setNewItemIds(new Set()), 10000)
       
       // 语音播报新上榜热搜（仅在非静音状态下）
       if (!isMuted) {
-        const newItems = allItems.filter(item => brandNew.includes(item.id))
-        // 只播报第一条新上榜的，避免连续播报太多
-        if (newItems.length > 0) {
-          speakNewItem(newItems[0].platform, newItems[0].title)
-        }
+        const first = allItems.find(i => brandNew.includes(i.id))
+        if (first) speakNewItem(first.platform, first.title)
       }
       
-      return () => {
-        clearTimeout(highlightTimer)
-        clearTimeout(topTimer)
-      }
+      return () => { clearTimeout(t1); clearTimeout(t2) }
     }
-    prevItemsRef.current = currentIds
-  }, [allItems, isUserScrolling, isMuted, speakNewItem])
+  }, [allItems, isMuted, speakNewItem])
 
   const handleViewPending = useCallback(() => {
     setPendingCount(0)
@@ -699,11 +780,11 @@ export function NewsFeed({
 
           <div className="flex items-center gap-2">
             {/* 音频播报按钮组 */}
-            <div className="flex items-center gap-0.5 bg-secondary/50 rounded-lg p-0.5">
+            <div className="flex items-center gap-0.5 bg-secondary/50 rounded-lg p-0.5 shrink-0">
               <button
                 onClick={onToggleMute}
                 className={cn(
-                  "relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all",
+                  "relative flex items-center justify-center w-8 h-8 rounded-md transition-all",
                   isMuted
                     ? "text-muted-foreground hover:text-foreground hover:bg-accent"
                     : "bg-primary/20 text-primary"
@@ -711,17 +792,16 @@ export function NewsFeed({
                 title={isMuted ? "开启语音播报" : "关闭语音播报"}
               >
                 {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                <span className="hidden sm:inline">{isMuted ? "语音" : "播报中"}</span>
                 {!isMuted && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
               </button>
               <button
                 onClick={handleTestVoice}
-                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
+                className="px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-all"
                 title="测试播报"
               >
-                <Play size={12} />
+                测试
               </button>
               <button
                 onClick={() => setVoiceSettingsOpen(true)}

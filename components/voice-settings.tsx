@@ -6,7 +6,6 @@ import {
   X,
   Volume2,
   Play,
-  User,
   Settings2,
 } from "lucide-react"
 
@@ -135,30 +134,39 @@ export function speakText(text: string, settings: VoiceSettings) {
   utterance.pitch = 1.0
   utterance.volume = settings.volume / 100
 
-  // 获取声音列表
-  const voices = window.speechSynthesis.getVoices()
+  // 获取中文声音列表
+  const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("zh"))
   
-  // 根据性别选择声音
-  const zhVoices = voices.filter(v => v.lang.includes("zh"))
+  let selected: SpeechSynthesisVoice | undefined
   
-  if (settings.voiceGender === "female") {
-    // 优先选择女声
-    const femaleVoice = zhVoices.find(v => 
-      v.name.includes("Female") || 
-      v.name.includes("女") || 
+  if (settings.voiceGender === "male") {
+    // 男声：优先匹配明确的男声标识
+    selected = voices.find(v => 
+      v.name.toLowerCase().includes("male") || 
+      v.name.includes("男") ||
+      v.name.includes("Yu-Shu")
+    )
+    // 如果没找到明确男声，取最后一个zh声音作为男声（通常备选声音是男声）
+    if (!selected && voices.length > 0) {
+      selected = voices[voices.length - 1]
+    }
+  } else {
+    // 女声：优先匹配明确的女声标识
+    selected = voices.find(v => 
+      v.name.toLowerCase().includes("female") || 
+      v.name.includes("女") ||
       v.name.includes("Ting-Ting") ||
       v.name.includes("Mei-Jia") ||
       v.name.includes("Google") // Google中文通常是女声
-    ) || zhVoices[0]
-    if (femaleVoice) utterance.voice = femaleVoice
-  } else {
-    // 优先选择男声
-    const maleVoice = zhVoices.find(v => 
-      v.name.includes("Male") || 
-      v.name.includes("男") ||
-      v.name.includes("Yu-Shu")
-    ) || zhVoices[1] || zhVoices[0]
-    if (maleVoice) utterance.voice = maleVoice
+    )
+    // 如果没找到明确女声，取第一个zh声音作为女声（通常默认是女声）
+    if (!selected && voices.length > 0) {
+      selected = voices[0]
+    }
+  }
+  
+  if (selected) {
+    utterance.voice = selected
   }
 
   window.speechSynthesis.speak(utterance)
@@ -275,40 +283,7 @@ export function VoiceSettingsDialog({
             </div>
           </div>
 
-          {/* 人声设置（仅在选择人声时显示） */}
-          {localSettings.soundType === "voice" && (
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-3">
-                声音性别
-              </label>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, voiceGender: "female" })}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-all",
-                    localSettings.voiceGender === "female"
-                      ? "bg-pink-500/10 border-pink-500 text-pink-500"
-                      : "bg-secondary/50 border-border hover:border-pink-500/50"
-                  )}
-                >
-                  <User size={16} />
-                  <span className="font-medium">女声</span>
-                </button>
-                <button
-                  onClick={() => setLocalSettings({ ...localSettings, voiceGender: "male" })}
-                  className={cn(
-                    "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg border transition-all",
-                    localSettings.voiceGender === "male"
-                      ? "bg-blue-500/10 border-blue-500 text-blue-500"
-                      : "bg-secondary/50 border-border hover:border-blue-500/50"
-                  )}
-                >
-                  <User size={16} />
-                  <span className="font-medium">男声</span>
-                </button>
-              </div>
-            </div>
-          )}
+
         </div>
 
         {/* Footer */}
