@@ -14,7 +14,7 @@ export async function GET(request: Request) {
 
   try {
     const res = await fetch(
-      `https://weixin.sogou.com/weixin?type=1&query=${encodeURIComponent(query)}&ie=utf8`,
+      `https://weixin.sogou.com/weixin?type=2&query=${encodeURIComponent(query)}&ie=utf8`,
       {
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -28,35 +28,51 @@ export async function GET(request: Request) {
     )
     const html = await res.text()
 
-    // 解析公众号名称
-    const accountMatch = html.match(/class="tit"[^>]*>([^<]+)</)
-    // 解析最新文章标题
-    const titleMatch = html.match(/class="wx-rb[^"]*"[^>]*title="([^"]+)"/)
-    // 解析文章链接
-    const urlMatch = html.match(/class="wx-rb[^"]*"[^>]*href="([^"]+)"/)
-    // 解析封面图
-    const imgMatch = html.match(/class="wx-rb[^"]*"[\s\S]*?<img[^>]*src="([^"]+)"/)
-    // 解析摘要
+    // 匹配标题：从 <a> 标签的 title 属性或文本内容取
+    const titleMatch = html.match(/<a[^>]+uigs="article_title_1"[^>]*title="([^"]+)"/)
+      || html.match(/<a[^>]+uigs="article_title_1"[^>]*>([^<]+)</)
+    // 匹配文章链接
+    const urlMatch = html.match(/<a[^>]+uigs="article_title_1"[^>]*href="([^"]+)"/)
+    // 匹配摘要
     const summaryMatch = html.match(/class="txt-info"[^>]*>([\s\S]*?)<\/p>/)
+    // 匹配图片：sogou 缩略图里的原始 url 参数
+    const imgMatch = html.match(/sogoucdn\.com\/v2\/thumb[^"']*url=([^&"']+)/)
+    // 匹配作者
+    const authorMatch = html.match(/class="account"[^>]*>([\s\S]*?)<\/span>/)
 
-    const title = titleMatch?.[1] || ""
-    const url = urlMatch?.[1] || ""
-    const imageUrl = imgMatch?.[1] || ""
-    const summary = summaryMatch?.[1]?.replace(/<[^>]+>/g, "").trim().slice(0, 100) || ""
+    const title = titleMatch?.[1]?.trim() || ""
+    const rawUrl = urlMatch?.[1]?.replace(/&amp;/g, "&").trim() || ""
+    const summary = summaryMatch?.[1]?.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "").trim().slice(0, 100) || ""
+    const author = authorMatch?.[1]?.replace(/<[^>]+>/g, "").trim() || account
 
-    if (!title && !url) {
+    // 还原图片真实地址
+    let imageUrl = ""
+    if (imgMatch?.[1]) {
+      try {
+        imageUrl = decodeURIComponent(imgMatch[1])
+        if (imageUrl.startsWith("http") === false) {
+          imageUrl = "https:" + imageUrl
+        }
+      } catch {
+        imageUrl = ""
+      }
+    }
+
+    const url = rawUrl.startsWith("http") ? rawUrl : `https://weixin.sogou.com${rawUrl}`
+
+    if (!url) {
       return NextResponse.json({ success: false, error: "no article found" })
     }
 
     return NextResponse.json({
       success: true,
       data: {
-        author: account,
+        author,
         title,
         summary,
         imageUrl,
         pubDate: "",
-        url: url.startsWith("http") ? url : `https://weixin.sogou.com${url}`,
+        url,
       },
     })
   } catch (e) {

@@ -331,13 +331,7 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
 
       {/* ═══════ 左文右图双栏布局 ═══════ */}
       <div 
-        className="flex flex-row gap-3 w-full p-4 rounded-xl"
-        style={{ 
-          background: 'rgba(255, 255, 255, 0.03)',
-          backdropFilter: 'blur(8px)',
-          border: '1px solid rgba(255, 255, 255, 0.07)',
-          borderRadius: '12px',
-        }}
+        className="flex flex-row gap-3 w-full p-4 rounded-xl bg-card/50 dark:bg-white/[0.03] border border-border/30 dark:border-white/[0.07] backdrop-blur-sm"
       >
         {/* ═══════ 左侧文字区（65-70%宽度，无图片时撑满100%） ═══════ */}
         <div 
@@ -366,13 +360,12 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
             </div>
           </div>
 
-          {/* 标题 - 加粗加大 */}
+          {/* 标题 - 加粗加大，使用 text-foreground 适配日夜模式 */}
           <h3 
-            className="font-bold leading-tight mb-2 text-balance sm:text-lg"
+            className="font-bold leading-tight mb-2 text-balance sm:text-lg text-foreground"
             style={{ 
               fontSize: '18px', 
               fontWeight: '700', 
-              color: '#FFFFFF', 
               lineHeight: '1.4',
             }}
           >

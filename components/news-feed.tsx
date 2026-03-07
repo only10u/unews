@@ -448,13 +448,10 @@ export function NewsFeed({
     const prevIds = prevItemsRef.current
     const brandNew = currentIds.filter((id) => !prevIds.includes(id))
     if (brandNew.length > 0 && prevIds.length > 0) {
-      if (isUserScrolling) {
-        setPendingCount((c) => c + brandNew.length)
-      } else {
-        setNewItemIds(new Set(brandNew))
-        const timer = setTimeout(() => setNewItemIds(new Set()), 5000)
-        return () => clearTimeout(timer)
-      }
+      // 自动刷新：不再显示"有xx条新热搜"提示，直接更新列表
+      setNewItemIds(new Set(brandNew))
+      const timer = setTimeout(() => setNewItemIds(new Set()), 5000)
+      return () => clearTimeout(timer)
     }
     prevItemsRef.current = currentIds
   }, [allItems, isUserScrolling])
@@ -576,19 +573,6 @@ export function NewsFeed({
           </div>
         </div>
       </div>
-
-      {/* Queue mode banner */}
-      {pendingCount > 0 && (
-        <div className="sticky top-[105px] z-20 flex justify-center py-2">
-          <button
-            onClick={handleViewPending}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary text-primary-foreground text-xs font-bold shadow-lg hover:bg-primary/90 transition-all animate-slide-in"
-          >
-            <ArrowUp size={14} />
-            {"有 " + pendingCount + " 条新热��，点击查看"}
-          </button>
-        </div>
-      )}
 
       {/* News List */}
       <div ref={scrollRef} className="h-[calc(100vh-56px-48px-49px)] overflow-y-auto">
