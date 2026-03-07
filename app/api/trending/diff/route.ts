@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server"
 
 // 代理 /trending/diff 接口到腾讯云服务器
-// 所有对 http://1.12.248.87:3003 的请求都必须通过服务端代理，避免混合内容错误
+// 使用端口 3001（与其他 trending API 一致），避免混合内容错误
 export async function GET() {
   try {
-    const res = await fetch("http://1.12.248.87:3003/trending/diff", {
+    const res = await fetch("http://1.12.248.87:3001/api/trending/diff", {
       next: { revalidate: 60 }, // 1分钟缓存
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(25000), // 与其他路由一致的超时时间
       headers: {
         "Accept": "application/json",
       },
