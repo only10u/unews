@@ -28,26 +28,40 @@ export async function GET(request: Request) {
     )
     const html = await res.text()
 
-    // 文章搜索结果，匹配第一条
-    const titleMatch = html.match(/class="txt-box"[^>]*>[\s\S]*?<h3[^>]*>[\s\S]*?<a[^>]*title="([^"]+)"/)
-    const urlMatch = html.match(/class="txt-box"[^>]*>[\s\S]*?<h3[^>]*>[\s\S]*?<a[^>]*href="([^"]+)"/)
+    // 匹配标题：从 <a> 标签的 title 属性或文本内容取
+    const titleMatch = html.match(/<a[^>]+uigs="article_title_1"[^>]*title="([^"]+)"/)
+      || html.match(/<a[^>]+uigs="article_title_1"[^>]*>([^<]+)</)
+    // 匹配文章链接
+    const urlMatch = html.match(/<a[^>]+uigs="article_title_1"[^>]*href="([^"]+)"/)
+    // 匹配摘要
     const summaryMatch = html.match(/class="txt-info"[^>]*>([\s\S]*?)<\/p>/)
-    const imgMatch = html.match(/<div class="img-box"[^>]*>[\s\S]*?<img[^>]*src="([^"]+)"/)
+    // 匹配图片：sogou 缩略图里的原始 url 参数
+    const imgMatch = html.match(/sogoucdn\.com\/v2\/thumb[^"']*url=([^&"']+)/)
+    // 匹配作者
     const authorMatch = html.match(/class="account"[^>]*>([\s\S]*?)<\/span>/)
 
     const title = titleMatch?.[1]?.trim() || ""
-    const url = urlMatch?.[1]?.trim() || ""
-    const summary = summaryMatch?.[1]?.replace(/<[^>]+>/g, "").trim().slice(0, 100) || ""
-    const imageUrl = imgMatch?.[1]?.trim() || ""
+    const rawUrl = urlMatch?.[1]?.replace(/&amp;/g, "&").trim() || ""
+    const summary = summaryMatch?.[1]?.replace(/<[^>]+>/g, "").replace(/&[a-z]+;/g, "").trim().slice(0, 100) || ""
     const author = authorMatch?.[1]?.replace(/<[^>]+>/g, "").trim() || account
 
-    if (!title && !url) {
-      // debug: 返回 html 片段帮助定位
-      return NextResponse.json({ 
-        success: false, 
-        error: "no article found",
-        htmlSample: html.slice(2000, 5000)
-      })
+    // 还原图片真实地址
+    let imageUrl = ""
+    if (imgMatch?.[1]) {
+      try {
+        imageUrl = decodeURIComponent(imgMatch[1])
+        if (imageUrl.startsWith("http") === false) {
+          imageUrl = "https:" + imageUrl
+        }
+      } catch {
+        imageUrl = ""
+      }
+    }
+
+    const url = rawUrl.startsWith("http") ? rawUrl : `https://weixin.sogou.com${rawUrl}`
+
+    if (!url) {
+      return NextResponse.json({ success: false, error: "no article found" })
     }
 
     return NextResponse.json({
@@ -58,7 +72,7 @@ export async function GET(request: Request) {
         summary,
         imageUrl,
         pubDate: "",
-        url: url.startsWith("http") ? url : `https://weixin.sogou.com${url}`,
+        url,
       },
     })
   } catch (e) {
