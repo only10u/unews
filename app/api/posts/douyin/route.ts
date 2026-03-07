@@ -22,42 +22,23 @@ export async function GET(request: Request) {
     )
 
     const text = await res.text()
+    const json = JSON.parse(text)
 
-    // DEBUG：直接返回原始响应，看数据结构
-    let json: any
-    try {
-      json = JSON.parse(text)
-    } catch {
-      return NextResponse.json({
-        success: false,
-        error: "non-json",
-        status: res.status,
-        preview: text.slice(0, 1000),
-      })
-    }
-
-    // 返回顶层 key 列表 + data 数组第一条的结构
-    const topKeys = Object.keys(json)
-    const firstItem = json?.data?.[0]
-    const firstItemKeys = firstItem ? Object.keys(firstItem) : []
-    const awemeInfo = firstItem?.aweme_info
-    const awemeKeys = awemeInfo ? Object.keys(awemeInfo) : []
+    const first = json?.aweme_list?.[0]
 
     return NextResponse.json({
       debug: true,
-      status: res.status,
-      topKeys,
-      dataLength: json?.data?.length ?? "no data field",
-      firstItemKeys,
-      awemeKeys,
-      // 直接dump第一条的关键字段
-      sample: awemeInfo ? {
-        aweme_id: awemeInfo.aweme_id,
-        desc: awemeInfo.desc,
-        author_nickname: awemeInfo.author?.nickname,
-        cover: awemeInfo.video?.cover?.url_list?.[0],
-        avatar: awemeInfo.author?.avatar_thumb?.url_list?.[0],
-      } : firstItem,
+      aweme_list_length: json?.aweme_list?.length ?? "no aweme_list",
+      firstKeys: first ? Object.keys(first) : [],
+      sample: first ? {
+        aweme_id: first.aweme_id,
+        desc: first.desc,
+        author_nickname: first.author?.nickname,
+        author_avatar: first.author?.avatar_thumb?.url_list?.[0],
+        cover: first.video?.cover?.url_list?.[0],
+        dynamic_cover: first.video?.dynamic_cover?.url_list?.[0],
+        share_url: first.share_url,
+      } : null,
     })
   } catch (e) {
     return NextResponse.json({ success: false, error: String(e) })
