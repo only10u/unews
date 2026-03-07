@@ -38,6 +38,9 @@ interface NewsFeedProps {
   // 音频播报相关
   isMuted?: boolean
   onToggleMute?: () => void
+  // 滚动联动相关
+  scrollRef?: React.RefObject<HTMLDivElement>
+  onScroll?: (scrollTop: number, scrollHeight: number, clientHeight: number) => void
 }
 
 const PREVIEW_COUNT = 20
@@ -206,11 +209,32 @@ function mergeNewsItem(existing: NewsItem | undefined, newItem: NewsItem): NewsI
   }
 }
 
+/** 格式化时间戳为相对时间 */
+function formatRelativeTime(firstSeenAt: number): string {
+  const now = Date.now()
+  const diffMs = now - firstSeenAt
+  const diffMinutes = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMinutes / 60)
+  
+  if (diffMinutes < 1) return "刚刚"
+  if (diffMinutes < 60) return `${diffMinutes}分钟前`
+  if (diffHours < 24) return `${diffHours}小时前`
+  
+  // 超过24小时显示 MM-DD HH:mm
+  const date = new Date(firstSeenAt)
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  const hour = String(date.getHours()).padStart(2, "0")
+  const minute = String(date.getMinutes()).padStart(2, "0")
+  return `${month}-${day} ${hour}:${minute}`
+}
+
 /** Convert trending items from API into NewsItem format */
 function trendingToNewsItems(
   items: TrendingItem[],
   platform: "weibo" | "gongzhonghao" | "douyin",
-  cache?: Map<string, NewsItem>
+  cache?: Map<string, NewsItem>,
+  firstSeenMap?: Map<string, number>
 ): NewsItem[] {
   const authors: Record<string, { name: string; avatar: string; verified: boolean; followers: string; isOfficial: boolean }> = {
     weibo: { name: "微博热搜", avatar: "https://api.dicebear.com/7.x/initials/svg?seed=WB&backgroundColor=e60012", verified: true, followers: "5000万", isOfficial: true },
@@ -230,21 +254,28 @@ function trendingToNewsItems(
     const tags: string[] = []
     if (item.rank <= 3) tags.push("热搜前三")
     if (item.rank <= 10) tags.push("Top 10")
-    if (item.isBurst) tags.push("热��爆发")
+    if (item.isBurst) tags.push("热门爆发")
     if (score >= 9.0) tags.push("突发爆点")
     const delta = item.rankDelta ?? 0
 
-    // Minutes ago: simulate based on rank position
-    const minutesAgo = Math.max(1, index * 2 + Math.floor(Math.random() * 3))
-    const timestamp = minutesAgo <= 60 ? `${minutesAgo}分钟前` : `${Math.floor(minutesAgo / 60)}小时前`
+    const id = `${platform}-trending-${item.id}`
+    
+    // 修复8: 使用首次发现时间计算相对时间
+    // 优先使用缓存中的首次发现时间，没有则记录当前时间
+    let firstSeenAt = firstSeenMap?.get(id)
+    if (!firstSeenAt) {
+      firstSeenAt = Date.now()
+      if (firstSeenMap) {
+        firstSeenMap.set(id, firstSeenAt)
+      }
+    }
+    const timestamp = formatRelativeTime(firstSeenAt)
 
     // Use real enriched author data from API (prefer API author over generic platform default)
     const authorName = item.authorName || item.topAuthor || auth.name
     const authorAvatar = item.authorAvatar || item.topAuthorAvatar || auth.avatar
     // Use real excerpt only - no fake fallback text
     const summary = item.excerpt || item.summary || ""
-    
-    const id = `${platform}-trending-${item.id}`
     
     const newItem: NewsItem = {
       id,
@@ -271,7 +302,7 @@ function trendingToNewsItems(
       prevPlatformRank: item.prevRank,
       rankDelta: delta,
       isBursting: item.isBurst || delta >= 5,
-      firstSeenAt: Date.now() - minutesAgo * 60 * 1000,
+      firstSeenAt,
       isOfficial: auth.isOfficial && item.rank <= 5,
     }
     
@@ -350,6 +381,8 @@ export function NewsFeed({
   tweetFontSize = 14,
   isMuted = true,
   onToggleMute,
+  scrollRef: externalScrollRef,
+  onScroll: onScrollSync,
 }: NewsFeedProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -367,10 +400,14 @@ export function NewsFeed({
   // 临时置顶的新消息ID集合（3秒后移除）
   const [tempTopIds, setTempTopIds] = useState<Set<string>>(new Set())
   const prevItemsRef = useRef<string[]>([])
-  const scrollRef = useRef<HTMLDivElement>(null)
+  const internalScrollRef = useRef<HTMLDivElement>(null)
+  const scrollRef = externalScrollRef || internalScrollRef
   
   // 修复1&3: 持久化数据缓存，用于字段级merge，防止空值覆盖
   const stableCache = useRef<Map<string, NewsItem>>(new Map())
+  
+  // 修复8: 首次发现时间Map - 用于准确显示上榜时间
+  const firstSeenMap = useRef<Map<string, number>>(new Map())
 
   const handleTogglePin = useCallback((id: string) => {
     setPinnedIds((prev) => {
@@ -421,11 +458,13 @@ export function NewsFeed({
 
   // Convert trending to news items - use only real API data, no mock data
   // 修复1&3: 使用 stableCache 进行字段级merge
+  // 修复8: 使用 firstSeenMap 记录首次发现时间
   const allItems = useMemo(() => {
     const cache = stableCache.current
-    const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo", cache)
-    const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin", cache)
-    const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao", cache)
+    const seenMap = firstSeenMap.current
+    const weiboNews = trendingToNewsItems(weiboTrending || [], "weibo", cache, seenMap)
+    const douyinNews = trendingToNewsItems(douyinTrending || [], "douyin", cache, seenMap)
+    const gzhNews = trendingToNewsItems(gzhTrending || [], "gongzhonghao", cache, seenMap)
 
     let combined: NewsItem[]
     if (activeChannel === "aggregate") {
@@ -441,7 +480,7 @@ export function NewsFeed({
     return combined
   }, [weiboTrending, douyinTrending, gzhTrending, activeChannel])
 
-  // Detect user scrolling to enable queue mode
+  // Detect user scrolling to enable queue mode + sync scroll
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -454,10 +493,14 @@ export function NewsFeed({
       } else {
         setIsUserScrolling(false)
       }
+      // 滚动联动回调
+      if (onScrollSync) {
+        onScrollSync(el.scrollTop, el.scrollHeight, el.clientHeight)
+      }
     }
     el.addEventListener("scroll", onScroll, { passive: true })
     return () => { el.removeEventListener("scroll", onScroll); clearTimeout(timer) }
-  }, [])
+  }, [onScrollSync])
 
   // 语音播报函数 - 使用设置中的配置
   const speakNewItem = useCallback((platform: string, _title: string) => {
@@ -775,6 +818,7 @@ export function NewsFeed({
                     <NewsCard
                       item={entry.item}
                       isNew={false}
+                      isTempTop={false}
                       isPinned={false}
                       fontSize={tweetFontSize}
                     />
@@ -784,6 +828,7 @@ export function NewsFeed({
                 <NewsCard
                   item={entry.item}
                   isNew={newItemIds.has(entry.item.id)}
+                  isTempTop={tempTopIds.has(entry.item.id)}
                   isPinned={entry.isPinned}
                   onTogglePin={handleTogglePin}
                   onHide={handleHide}

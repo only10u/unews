@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { cn } from "@/lib/utils"
-import { type NewsItem, PLATFORM_ICONS } from "@/lib/mock-data"
+import { useTrendingDiff, type TrendingDiffItem } from "@/hooks/use-trending-diff"
 import {
   ChevronDown,
   ChevronUp,
@@ -13,25 +13,12 @@ import {
   Sparkles,
   Clock,
   Flame,
-  Bitcoin,
-  ArrowUpRight,
-  ArrowDownRight,
-  Minus,
+  ExternalLink,
 } from "lucide-react"
 
 interface HotOverviewProps {
-  items: NewsItem[]
+  items: { id: string; title: string; platform: string }[]
   className?: string
-}
-
-interface TrendItem {
-  id: string
-  title: string
-  platform: "weibo" | "douyin" | "gongzhonghao"
-  status: "new" | "top10" | "rising"
-  prevRank?: number
-  currentRank?: number
-  delta?: number
 }
 
 interface MemeItem {
@@ -41,18 +28,11 @@ interface MemeItem {
   reason: string
 }
 
-interface CryptoImpactItem {
-  id: string
-  title: string
-  platform: string
-  impact: string
-  direction: "利好" | "利空" | "中性"
-}
-
 function getPlatformColor(p: string): string {
   switch (p) {
     case "weibo": return "bg-orange-500/15 text-orange-500 border-orange-500/20"
     case "douyin": return "bg-gray-900/15 text-gray-900 dark:bg-white/15 dark:text-white border-gray-900/20 dark:border-white/20"
+    case "gzh":
     case "gongzhonghao": return "bg-green-500/15 text-green-500 border-green-500/20"
     default: return "bg-gray-500/15 text-gray-500 border-gray-500/20"
   }
@@ -62,86 +42,61 @@ function getPlatformLabel(p: string): string {
   switch (p) {
     case "weibo": return "微博"
     case "douyin": return "抖音"
+    case "gzh":
     case "gongzhonghao": return "公众号"
     default: return p
   }
 }
 
-function getStatusLabel(status: TrendItem["status"]): { text: string; className: string } {
+function getStatusLabel(status: TrendingDiffItem["status"]): { text: string; className: string } {
   switch (status) {
     case "new": return { text: "新上榜", className: "bg-red-500/15 text-red-500" }
-    case "top10": return { text: "冲进前十", className: "bg-blue-500/15 text-blue-500" }
-    case "rising": return { text: "持续上升", className: "bg-emerald-500/15 text-emerald-500" }
+    case "top10": return { text: "冲进前十", className: "bg-orange-500/15 text-orange-500" }
+    case "rising": return { text: "上升中", className: "bg-emerald-500/15 text-emerald-500" }
+    default: return { text: "", className: "" }
+  }
+}
+
+function formatLastUpdate(dateStr: string): string {
+  try {
+    const date = new Date(dateStr)
+    return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })
+  } catch {
+    return ""
   }
 }
 
 export function HotOverview({ items, className }: HotOverviewProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date())
   const [memeItems, setMemeItems] = useState<MemeItem[]>([])
-  const [cryptoItems, setCryptoItems] = useState<CryptoImpactItem[]>([])
   const [isLoadingMeme, setIsLoadingMeme] = useState(false)
-  const [isLoadingCrypto, setIsLoadingCrypto] = useState(false)
   const [hasInitialized, setHasInitialized] = useState(false)
 
-  // 计算趋势变化数据
-  const trendItems = useMemo<TrendItem[]>(() => {
-    const trends: TrendItem[] = []
-    
-    for (const item of items) {
-      const delta = item.rankDelta ?? 0
-      const rank = item.platformRank ?? 99
-      const prevRank = item.prevPlatformRank ?? rank
-      
-      let status: TrendItem["status"] | null = null
-      
-      // 新上榜：之前不在榜单（prevRank很大或不存在）
-      if (prevRank > 50 && rank <= 50) {
-        status = "new"
-      }
-      // 冲进前十
-      else if (prevRank > 10 && rank <= 10) {
-        status = "top10"
-      }
-      // 持续上升（上升5位以上）
-      else if (delta >= 5) {
-        status = "rising"
-      }
-      
-      if (status) {
-        trends.push({
-          id: item.id,
-          title: item.title,
-          platform: item.platform,
-          status,
-          prevRank,
-          currentRank: rank,
-          delta: Math.abs(delta),
-        })
-      }
-    }
-    
-    // 按状态优先级排序：新上榜 > 冲进前十 > 持续上升
-    const priority = { new: 0, top10: 1, rising: 2 }
-    return trends.sort((a, b) => priority[a.status] - priority[b.status]).slice(0, 10)
-  }, [items])
+  // 使用共享的趋势变化数据
+  const { all: trendItems, lastUpdate, isLoading: isTrendLoading, refresh: refreshTrend } = useTrendingDiff()
+
+  // 取前10条趋势变化
+  const displayTrendItems = useMemo(() => {
+    return trendItems.slice(0, 10)
+  }, [trendItems])
 
   // 获取Meme潜力榜
   const fetchMemePotential = useCallback(async () => {
-    if (items.length === 0) return
+    // 使用 trendItems 中的标题列表
+    const titleList = trendItems.slice(0, 30).map(t => ({
+      id: t.title,
+      title: t.title,
+      platform: t.platform,
+    }))
+    
+    if (titleList.length === 0) return
     setIsLoadingMeme(true)
     try {
       const res = await fetch("/api/ai/meme-potential", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.slice(0, 30).map(i => ({
-            id: i.id,
-            title: i.title,
-            platform: i.platform,
-          })),
-        }),
+        body: JSON.stringify({ items: titleList }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -152,80 +107,47 @@ export function HotOverview({ items, className }: HotOverviewProps) {
     } finally {
       setIsLoadingMeme(false)
     }
-  }, [items])
+  }, [trendItems])
 
-  // 获取币价影响分析
-  const fetchCryptoImpact = useCallback(async () => {
-    if (items.length === 0) return
-    setIsLoadingCrypto(true)
-    try {
-      const res = await fetch("/api/ai/crypto-impact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.slice(0, 30).map(i => ({
-            id: i.id,
-            title: i.title,
-            platform: i.platform,
-          })),
-        }),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setCryptoItems(data.cryptoNews || [])
-      }
-    } catch (e) {
-      console.error("Failed to fetch crypto impact:", e)
-    } finally {
-      setIsLoadingCrypto(false)
-    }
-  }, [items])
-
-  // 页面加载时立即获取数据，然后每10分钟刷新
+  // 页面加载时立即获取数据
   useEffect(() => {
-    if (items.length > 0 && !hasInitialized) {
+    if (trendItems.length > 0 && !hasInitialized) {
       setHasInitialized(true)
       fetchMemePotential()
-      fetchCryptoImpact()
     }
-  }, [items.length, hasInitialized, fetchMemePotential, fetchCryptoImpact])
+  }, [trendItems.length, hasInitialized, fetchMemePotential])
 
-  // 每10分钟自动刷新
+  // 每10分钟刷新Meme潜力榜
   useEffect(() => {
     const interval = setInterval(() => {
-      setLastUpdate(new Date())
       fetchMemePotential()
-      fetchCryptoImpact()
     }, 10 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [fetchMemePotential, fetchCryptoImpact])
+  }, [fetchMemePotential])
 
   // 一键复制
   const handleCopy = useCallback(() => {
-    const trendText = trendItems.map(t => {
-      const statusLabel = getStatusLabel(t.status).text
-      const rankChange = t.prevRank && t.currentRank 
-        ? `#${t.prevRank}→#${t.currentRank} 上升${t.delta}名`
-        : ""
+    const trendText = displayTrendItems.map(t => {
+      const statusLabel = t.status ? getStatusLabel(t.status).text : ""
+      const rankChange = t.prevRank !== null
+        ? `#${t.prevRank}→#${t.rank} ${t.rankChange > 0 ? "上升" : "下降"}${Math.abs(t.rankChange)}名`
+        : "—"
       return `[${getPlatformLabel(t.platform)}] ${t.title}   ${statusLabel}   ${rankChange}`
     }).join("\n")
     
     const memeText = memeItems.map(m => `${m.title}\n理由：${m.reason}`).join("\n\n")
     
-    const cryptoText = cryptoItems.map(c => `[${c.direction}] ${c.title}\n影响：${c.impact}`).join("\n\n")
-    
-    const fullText = `【趋势变化】\n${trendText}\n\n【Meme潜力榜】\n${memeText}\n\n【币价影响】\n${cryptoText}`
+    const fullText = `【趋势变化】\n${trendText}\n\n【Meme潜力榜】\n${memeText}`
     
     navigator.clipboard.writeText(fullText)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [trendItems, memeItems, cryptoItems])
+  }, [displayTrendItems, memeItems])
 
   const handleRefresh = useCallback(() => {
-    setLastUpdate(new Date())
+    refreshTrend()
     fetchMemePotential()
-    fetchCryptoImpact()
-  }, [fetchMemePotential, fetchCryptoImpact])
+  }, [refreshTrend, fetchMemePotential])
 
   return (
     <div className={cn("border-t border-border/30 bg-card/50", className)}>
@@ -239,7 +161,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
         <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
           <div className="flex items-center gap-1">
             <Clock size={12} />
-            <span>上次更新: {lastUpdate.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}</span>
+            <span>上次更新: {lastUpdate ? formatLastUpdate(lastUpdate) : "--:--"}</span>
           </div>
           <span className="text-muted-foreground/50">|</span>
           <span>每10分钟更新</span>
@@ -250,7 +172,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
               className="p-1.5 rounded-md hover:bg-accent transition-colors"
               title="刷新"
             >
-              <RefreshCw size={12} className={cn(isLoadingMeme && "animate-spin")} />
+              <RefreshCw size={12} className={cn((isTrendLoading || isLoadingMeme) && "animate-spin")} />
             </button>
             <button
               onClick={handleCopy}
@@ -278,33 +200,53 @@ export function HotOverview({ items, className }: HotOverviewProps) {
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp size={14} className="text-emerald-500" />
               <h4 className="text-sm font-semibold text-foreground">趋势变化</h4>
-              <span className="text-[10px] text-muted-foreground">({trendItems.length}条)</span>
+              <span className="text-[10px] text-muted-foreground">({displayTrendItems.length}条)</span>
             </div>
             
-            {trendItems.length === 0 ? (
+            {isTrendLoading && displayTrendItems.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <RefreshCw size={12} className="animate-spin" />
+                <span>加载中...</span>
+              </div>
+            ) : displayTrendItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">暂无明显趋势变化</p>
             ) : (
               <div className="space-y-2">
-                {trendItems.map((item) => {
-                  const status = getStatusLabel(item.status)
+                {displayTrendItems.map((item, idx) => {
+                  const statusInfo = item.status ? getStatusLabel(item.status) : null
                   return (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+                    <a
+                      key={`${item.platform}-${item.title}-${idx}`}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 p-2 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors group"
                     >
-                      <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium border", getPlatformColor(item.platform))}>
+                      <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium border shrink-0", getPlatformColor(item.platform))}>
                         {getPlatformLabel(item.platform)}
                       </span>
-                      <span className="flex-1 text-sm text-foreground truncate">{item.title}</span>
-                      <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium", status.className)}>
-                        {status.text}
-                      </span>
-                      {item.prevRank && item.currentRank && (
-                        <span className="text-[10px] text-emerald-500 font-mono">
-                          #{item.prevRank}→#{item.currentRank} <TrendingUp size={10} className="inline" />{item.delta}
+                      <span className="flex-1 text-sm text-foreground truncate group-hover:text-primary">{item.title}</span>
+                      {statusInfo && statusInfo.text && (
+                        <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0", statusInfo.className)}>
+                          {statusInfo.text}
                         </span>
                       )}
-                    </div>
+                      <span className="text-[10px] text-muted-foreground font-mono shrink-0">
+                        {item.prevRank !== null ? (
+                          <>
+                            #{item.prevRank}→#{item.rank}
+                            {item.rankChange > 0 && (
+                              <span className="text-emerald-500 ml-1">
+                                <TrendingUp size={10} className="inline" />{item.rankChange}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          "—"
+                        )}
+                      </span>
+                      <ExternalLink size={10} className="text-muted-foreground opacity-0 group-hover:opacity-100 shrink-0" />
+                    </a>
                   )
                 })}
               </div>
@@ -340,57 +282,6 @@ export function HotOverview({ items, className }: HotOverviewProps) {
                     </p>
                   </div>
                 ))}
-              </div>
-            )}
-          </div>
-
-          {/* 币价影响 */}
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Bitcoin size={14} className="text-amber-500" />
-              <h4 className="text-sm font-semibold text-foreground">币价影响</h4>
-              <span className="text-[10px] text-muted-foreground">24h内可能影响币价的新闻</span>
-            </div>
-            
-            {isLoadingCrypto ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <RefreshCw size={12} className="animate-spin" />
-                <span>AI正在分析...</span>
-              </div>
-            ) : cryptoItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无可能影响币价的新闻</p>
-            ) : (
-              <div className="space-y-3">
-                {cryptoItems.map((item, idx) => {
-                  const directionConfig = {
-                    "利好": { icon: ArrowUpRight, color: "text-emerald-500", bg: "bg-emerald-500/10 border-emerald-500/20" },
-                    "利空": { icon: ArrowDownRight, color: "text-red-500", bg: "bg-red-500/10 border-red-500/20" },
-                    "中性": { icon: Minus, color: "text-gray-500", bg: "bg-gray-500/10 border-gray-500/20" },
-                  }[item.direction] || { icon: Minus, color: "text-gray-500", bg: "bg-gray-500/10 border-gray-500/20" }
-                  const DirIcon = directionConfig.icon
-
-                  return (
-                    <div
-                      key={item.id || idx}
-                      className={cn("p-3 rounded-lg border", directionConfig.bg)}
-                    >
-                      <div className="flex items-start gap-2">
-                        <DirIcon size={16} className={cn("mt-0.5 shrink-0", directionConfig.color)} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={cn("text-xs font-bold", directionConfig.color)}>{item.direction}</span>
-                            <span className="text-xs text-muted-foreground">[{getPlatformLabel(item.platform)}]</span>
-                          </div>
-                          <p className="text-sm font-medium text-foreground mb-1">{item.title}</p>
-                          <p className="text-[12px] text-muted-foreground">
-                            <span className="text-amber-500 font-medium">影响：</span>
-                            {item.impact}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
               </div>
             )}
           </div>

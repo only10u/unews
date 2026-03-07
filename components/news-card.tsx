@@ -42,6 +42,7 @@ interface EmbeddedPost {
 interface NewsCardProps {
   item: NewsItem
   isNew?: boolean
+  isTempTop?: boolean // 临时置顶状态（3秒内）
   isPinned?: boolean
   onTogglePin?: (id: string) => void
   onHide?: (id: string) => void
@@ -173,7 +174,7 @@ async function fetchEmbeddedPost(itemId: string, title: string): Promise<Embedde
 // Images, content text, and avatar are ALWAYS visible
 // Expand reveals: detail/video + AI summary + interactions
 // ─────────────────────────────────────────────────
-export function NewsCard({ item, isNew, isPinned, onTogglePin, onHide, fontSize = 14 }: NewsCardProps) {
+export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide, fontSize = 14 }: NewsCardProps) {
   // 修复4: 使用全局缓存判断图片是否失败，配合useState触发重渲染
   const [imgError, setImgError] = useState(() => failedImageUrls.has(item.imageUrl || ""))
   const [avatarError, setAvatarError] = useState(() => failedAvatarUrls.has(item.authorAvatar || ""))
@@ -263,6 +264,9 @@ export function NewsCard({ item, isNew, isPinned, onTogglePin, onHide, fontSize 
         rankChangeAnimation
       )}
     >
+      {/* 新消息闪烁灯条 - 置顶期间显示 */}
+      {isTempTop && <div className="new-bar" />}
+
       {isPinned && (
         <div className="flex items-center gap-1.5 px-4 pt-3">
           <Pin size={12} className="text-primary fill-primary" />

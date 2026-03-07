@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { type Platform } from "@/lib/mock-data"
 import { TopNav, type FontSettings } from "@/components/top-nav"
 import { NewsFeed } from "@/components/news-feed"
@@ -50,6 +50,11 @@ export default function HomePage() {
     hotListFontSize: 14,
     tweetFontSize: 14,
   })
+
+  // 滚动联动相关
+  const mainFeedScrollRef = useRef<HTMLDivElement>(null)
+  const sidebarScrollRef = useRef<HTMLDivElement>(null)
+  const isScrollingSyncRef = useRef(false) // 防止循环触发
 
   // Load persisted state on mount
   useEffect(() => {
@@ -104,6 +109,38 @@ export default function HomePage() {
     setAiDenoiseEnabled((prev) => !prev)
   }, [])
 
+  // 滚动联动处理：左侧滚动时同步右侧
+  const handleMainFeedScroll = useCallback((scrollTop: number, scrollHeight: number, clientHeight: number) => {
+    if (isScrollingSyncRef.current || sidebarCollapsed) return
+    if (!sidebarScrollRef.current) return
+    
+    isScrollingSyncRef.current = true
+    const sidebarEl = sidebarScrollRef.current
+    const ratio = scrollTop / (scrollHeight - clientHeight || 1)
+    const targetTop = ratio * (sidebarEl.scrollHeight - sidebarEl.clientHeight)
+    sidebarEl.scrollTop = targetTop
+    
+    requestAnimationFrame(() => {
+      isScrollingSyncRef.current = false
+    })
+  }, [sidebarCollapsed])
+
+  // 滚动联动处理：右侧滚动时同步左侧
+  const handleSidebarScroll = useCallback((scrollTop: number, scrollHeight: number, clientHeight: number) => {
+    if (isScrollingSyncRef.current || sidebarCollapsed) return
+    if (!mainFeedScrollRef.current) return
+    
+    isScrollingSyncRef.current = true
+    const mainEl = mainFeedScrollRef.current
+    const ratio = scrollTop / (scrollHeight - clientHeight || 1)
+    const targetTop = ratio * (mainEl.scrollHeight - mainEl.clientHeight)
+    mainEl.scrollTop = targetTop
+    
+    requestAnimationFrame(() => {
+      isScrollingSyncRef.current = false
+    })
+  }, [sidebarCollapsed])
+
   return (
     <div className="min-h-screen bg-background">
       {/* Top Navigation */}
@@ -136,11 +173,21 @@ export default function HomePage() {
             tweetFontSize={fontSettings.tweetFontSize}
             isMuted={isMuted}
             onToggleMute={handleToggleMute}
+            scrollRef={mainFeedScrollRef}
+            onScroll={handleMainFeedScroll}
           />
         </div>
 
         {/* Hot Rankings Sidebar */}
-        <HotSidebar activeChannel={activeChannel} onToggle={handleSidebarToggle} onWidthChange={setSidebarWidth} isAuthed={isAuthed} hotListFontSize={fontSettings.hotListFontSize} />
+        <HotSidebar 
+          activeChannel={activeChannel} 
+          onToggle={handleSidebarToggle} 
+          onWidthChange={setSidebarWidth} 
+          isAuthed={isAuthed} 
+          hotListFontSize={fontSettings.hotListFontSize}
+          scrollRef={sidebarScrollRef}
+          onScroll={handleSidebarScroll}
+        />
       </div>
 
       {/* Audio unlock overlay removed */}

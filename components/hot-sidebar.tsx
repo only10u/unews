@@ -27,6 +27,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import Image from "next/image"
 import useSWR from "swr"
+import { useTrendingDiff, type TrendingDiffItem } from "@/hooks/use-trending-diff"
 
 interface HotSidebarProps {
   activeChannel: Platform
@@ -34,6 +35,9 @@ interface HotSidebarProps {
   onWidthChange?: (width: number) => void
   isAuthed?: boolean
   hotListFontSize?: number
+  // 滚动联动相关
+  scrollRef?: React.RefObject<HTMLDivElement>
+  onScroll?: (scrollTop: number, scrollHeight: number, clientHeight: number) => void
 }
 
 const DEFAULT_WIDTH = 350
@@ -135,6 +139,8 @@ function TrendingList({
   collapsible = true,
   forceExpand = false,
   fontSize = 14,
+  diffItems = [],
+  platformKey = "weibo",
 }: {
   title: string
   icon: string
@@ -146,6 +152,8 @@ function TrendingList({
   collapsible?: boolean
   forceExpand?: boolean
   fontSize?: number
+  diffItems?: TrendingDiffItem[]
+  platformKey?: "weibo" | "douyin" | "gzh"
 }) {
   const [changedIds, setChangedIds] = useState<Set<string>>(new Set())
   const [isExpanded, setIsExpanded] = useState(false)
@@ -200,41 +208,67 @@ function TrendingList({
 
       {/* Items */}
       <div>
-{displayItems.map((item) => {
-  const delta = item.rankDelta ?? 0
-  // 根据排名变化计算呼吸动画：上升显示淡红呼吸，下降显示淡绿呼吸
-  const rankChangeAnim = delta > 0 ? "animate-rank-up-breath" : delta < 0 ? "animate-rank-down-breath" : ""
-  return (
-  <a
-  key={item.id}
-  href={item.url}
-  target="_blank"
-  rel="noopener noreferrer"
-  className={cn(
-  "flex items-center gap-2 px-3 py-1.5 hover:bg-accent/40 transition-all group/item",
-  getRankBg(item.rank),
-  rankChangeAnim,
-  changedIds.has(item.id) && "animate-flash-rank"
-  )}
-  >
+        {displayItems.map((item) => {
+          // 从后端diff数据匹配趋势状态
+          const diffMatch = diffItems.find(d => d.title === item.title)
+          const status = diffMatch?.status || null
+          const rankChange = diffMatch?.rankChange || 0
+          
+          // 决定显示逻辑：后端数据优先，否则使用前端计算
+          const delta = rankChange || (item.rankDelta ?? 0)
+          const isNew = status === "new"
+          const isTop10 = status === "top10"
+          const isRising = status === "rising" || delta > 5
+          
+          // 根据排名变化计算呼吸动画
+          const rankChangeAnim = delta > 0 ? "animate-rank-up-breath" : delta < 0 ? "animate-rank-down-breath" : ""
+          
+          return (
+            <a
+              key={item.id}
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(
+                "flex items-center gap-2 px-3 py-1.5 hover:bg-accent/40 transition-all group/item",
+                getRankBg(item.rank),
+                rankChangeAnim,
+                changedIds.has(item.id) && "animate-flash-rank"
+              )}
+            >
               <span className="w-5 text-center text-xs font-bold shrink-0" style={{ color: getRankColor(item.rank) }}>
                 {item.rank}
               </span>
               <span 
                 className={cn(
                   "flex-1 truncate group-hover/item:text-primary transition-colors",
-                  delta > 0 ? "text-red-500" : delta < 0 ? "text-emerald-500" : "text-foreground/90"
+                  isNew ? "text-red-500 font-bold" : 
+                  delta > 0 ? "text-red-500" : 
+                  delta < 0 ? "text-emerald-500" : "text-foreground/90"
                 )}
                 style={{ fontSize: `${fontSize}px` }}
               >
                 {item.title}
               </span>
-              {item.isBurst && (
+              {/* 新上榜标签 */}
+              {isNew && (
+                <span className="shrink-0 px-1.5 py-0.5 rounded text-[9px] bg-red-500/15 text-red-500 font-bold">
+                  新
+                </span>
+              )}
+              {/* 飙升标签 */}
+              {!isNew && (item.isBurst || delta >= 5) && (
                 <span className="shrink-0 flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] bg-orange-500/15 text-orange-400 font-bold">
                   <Flame size={9} />
                 </span>
               )}
-              {delta > 0 && (
+              {/* 排名变化显示 */}
+              {!isNew && delta > 5 && (
+                <span className="shrink-0 flex items-center gap-0.5 text-[10px] text-red-500 font-bold font-mono">
+                  <TrendingUp size={10} /><TrendingUp size={10} />
+                </span>
+              )}
+              {!isNew && delta > 0 && delta <= 5 && (
                 <span className="shrink-0 flex items-center gap-0.5 text-[10px] text-red-500 font-bold font-mono">
                   <TrendingUp size={10} />
                   {delta}
@@ -277,7 +311,15 @@ function TrendingList({
   )
 }
 
-export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = false, hotListFontSize = 14 }: HotSidebarProps) {
+export function HotSidebar({ 
+  activeChannel, 
+  onToggle, 
+  onWidthChange, 
+  isAuthed = false, 
+  hotListFontSize = 14,
+  scrollRef: externalScrollRef,
+  onScroll: onScrollSync,
+}: HotSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH)
   const [columnCount, setColumnCount] = useState(1) // 1, 2, or 3 columns
@@ -330,6 +372,9 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
   const douyin = useRankTracking(douyinBase, "douyin")
   const gzh = useRankTracking(gzhBase, "gzh")
 
+  // 从后端获取趋势变化数据（与热点速览共享）
+  const { weibo: weiboDiff, douyin: douyinDiff, gzh: gzhDiff } = useTrendingDiff()
+
   const toggleCollapse = useCallback(() => {
     setIsCollapsed((prev) => {
       const next = !prev
@@ -377,24 +422,24 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
   const getOrderedPlatforms = useCallback(() => {
     if (activeChannel === "weibo") {
       return [
-        { key: "weibo", title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo },
-        { key: "douyin", title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin },
-        { key: "gzh", title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao },
+        { key: "weibo" as const, title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo, diffItems: weiboDiff },
+        { key: "douyin" as const, title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin, diffItems: douyinDiff },
+        { key: "gzh" as const, title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao, diffItems: gzhDiff },
       ]
     } else if (activeChannel === "douyin") {
       return [
-        { key: "douyin", title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin },
-        { key: "weibo", title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo },
-        { key: "gzh", title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao },
+        { key: "douyin" as const, title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin, diffItems: douyinDiff },
+        { key: "weibo" as const, title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo, diffItems: weiboDiff },
+        { key: "gzh" as const, title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao, diffItems: gzhDiff },
       ]
     } else {
       return [
-        { key: "gzh", title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao },
-        { key: "weibo", title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo },
-        { key: "douyin", title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin },
+        { key: "gzh" as const, title: "公众号热文 Top 50", icon: PLATFORM_ICONS.gongzhonghao, items: gzh, loading: gzhLoading, url: PLATFORM_OFFICIAL_URLS.gongzhonghao, diffItems: gzhDiff },
+        { key: "weibo" as const, title: "微博热搜 Top 50", icon: PLATFORM_ICONS.weibo, items: weibo, loading: weiboLoading, url: PLATFORM_OFFICIAL_URLS.weibo, diffItems: weiboDiff },
+        { key: "douyin" as const, title: "抖音热搜 Top 50", icon: PLATFORM_ICONS.douyin, items: douyin, loading: douyinLoading, url: PLATFORM_OFFICIAL_URLS.douyin, diffItems: douyinDiff },
       ]
     }
-  }, [activeChannel, weibo, douyin, gzh, weiboLoading, douyinLoading, gzhLoading])
+  }, [activeChannel, weibo, douyin, gzh, weiboLoading, douyinLoading, gzhLoading, weiboDiff, douyinDiff, gzhDiff])
 
   // 处理触摸事件开始（移动端支持）
   const handleTouchStartResize = useCallback((e: React.TouchEvent) => {
@@ -527,7 +572,16 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
           <div className="w-0.5 h-12 rounded-full bg-border group-hover:bg-primary/50 transition-colors" />
         </div>
 
-        <ScrollArea className="h-full">
+        <div 
+          ref={externalScrollRef}
+          className="h-full overflow-y-auto"
+          onScroll={(e) => {
+            if (onScrollSync) {
+              const el = e.currentTarget
+              onScrollSync(el.scrollTop, el.scrollHeight, el.clientHeight)
+            }
+          }}
+        >
           {/* Paywall temporarily disabled - show all content */}
           <div className="py-2 pl-2">
             {/* Width indicator hint */}
@@ -552,6 +606,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                       collapsible={false}
                       forceExpand
                       fontSize={hotListFontSize}
+                      diffItems={weiboDiff}
+                      platformKey="weibo"
                     />
                   </div>
                   <div className="border-r border-border/30">
@@ -566,6 +622,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                       collapsible={false}
                       forceExpand
                       fontSize={hotListFontSize}
+                      diffItems={douyinDiff}
+                      platformKey="douyin"
                     />
                   </div>
                   <div>
@@ -580,6 +638,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                       collapsible={false}
                       forceExpand
                       fontSize={hotListFontSize}
+                      diffItems={gzhDiff}
+                      platformKey="gzh"
                     />
                   </div>
                 </div>
@@ -595,6 +655,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                     loading={weiboLoading}
                     collapsible
                     fontSize={hotListFontSize}
+                    diffItems={weiboDiff}
+                    platformKey="weibo"
                   />
                   <div className="mx-3 border-t border-border/30" />
                   <TrendingList
@@ -607,6 +669,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                     loading={douyinLoading}
                     collapsible
                     fontSize={hotListFontSize}
+                    diffItems={douyinDiff}
+                    platformKey="douyin"
                   />
                   <div className="mx-3 border-t border-border/30" />
                   <TrendingList
@@ -619,6 +683,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                     loading={gzhLoading}
                     collapsible
                     fontSize={hotListFontSize}
+                    diffItems={gzhDiff}
+                    platformKey="gzh"
                   />
                 </>
               )
@@ -679,6 +745,8 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
                         collapsible={false}
                         forceExpand
                         fontSize={hotListFontSize}
+                        diffItems={platform.diffItems}
+                        platformKey={platform.key}
                       />
                     </div>
                   ))}
@@ -686,7 +754,7 @@ export function HotSidebar({ activeChannel, onToggle, onWidthChange, isAuthed = 
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
       </aside>
     </>
   )
