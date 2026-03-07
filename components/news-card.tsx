@@ -398,67 +398,58 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
               className="block mt-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-border/20 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex gap-3">
-                {/* 左侧文字区 */}
-                <div className="flex-1 min-w-0">
-                  {/* 头像 + 作者 + 时间 */}
-                  <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex gap-3 items-start">
+                {/* 左侧：账号名 + 标题 + 正文 */}
+                <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                  {/* 第一行：头像 + 账号名称（加大字体） */}
+                  <div className="flex items-center gap-1.5 mb-0.5">
                     {embeddedPost.avatar ? (
                       <img
                         src={proxyImage(embeddedPost.avatar) || embeddedPost.avatar}
                         alt=""
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none'
-                        }}
+                        className="w-5 h-5 rounded-full object-cover shrink-0"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none" }}
                       />
                     ) : (
-                      <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
-                        {(embeddedPost.author || embeddedPost.platform || "U")[0]}
+                      <div className="w-5 h-5 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold text-muted-foreground shrink-0">
+                        {(embeddedPost.author || "U")[0]}
                       </div>
                     )}
-                    <span className="text-sm font-medium text-foreground truncate">
+                    <span className="text-[13px] font-semibold text-foreground truncate">
                       {embeddedPost.author || (embeddedPost.platform === "wechat" ? "公众号" : embeddedPost.platform === "weibo" ? "微博用户" : "抖音用户")}
                     </span>
-                    {embeddedPost.pubDate && (
-                      <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
-                        {embeddedPost.pubDate.includes("T") 
-                          ? new Date(embeddedPost.pubDate).toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" })
-                          : embeddedPost.pubDate.substring(0, 10)}
-                      </span>
-                    )}
                   </div>
-                  
-                  {/* 推文标题 - 1行省略 */}
+
+                  {/* 第二行：标题（加粗） */}
                   {embeddedPost.title && (
-                    <p className="text-sm font-medium text-foreground truncate mb-1">
+                    <p className="text-[13px] font-bold text-foreground truncate leading-snug">
                       {embeddedPost.title}
                     </p>
                   )}
-                  
-                  {/* 推文正文 - 2行省略 */}
+
+                  {/* 第三行：正文内容（灰色，2行省略） */}
                   {embeddedPost.content && (
-                    <p 
-                      className="text-xs text-gray-500 dark:text-gray-400"
+                    <p
+                      className="text-[12px] text-gray-500 dark:text-gray-400 leading-snug"
                       style={{
-                        overflow: 'hidden',
-                        display: '-webkit-box',
+                        overflow: "hidden",
+                        display: "-webkit-box",
                         WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
+                        WebkitBoxOrient: "vertical",
                       }}
                     >
                       {embeddedPost.content}
                     </p>
                   )}
                 </div>
-                
-                {/* 右侧图片区 */}
+
+                {/* 右侧：图片 */}
                 {embeddedPost.imageUrl && (
-                  <div 
+                  <div
                     className="shrink-0 relative overflow-hidden rounded-lg"
                     style={{
-                      width: embeddedPost.platform === "douyin" ? '96px' : '80px',
-                      height: embeddedPost.platform === "douyin" ? '54px' : '80px',
+                      width: embeddedPost.platform === "douyin" ? "96px" : "72px",
+                      height: embeddedPost.platform === "douyin" ? "54px" : "72px",
                     }}
                   >
                     <img
@@ -466,10 +457,9 @@ export function NewsCard({ item, isNew, isPinned, aiSummaryEnabled, onTogglePin,
                       alt=""
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).parentElement!.style.display = 'none'
+                        (e.target as HTMLImageElement).parentElement!.style.display = "none"
                       }}
                     />
-                    {/* 抖音视频播放图标 */}
                     {embeddedPost.platform === "douyin" && (
                       <div className="absolute inset-0 flex items-center justify-center bg-black/30">
                         <Play size={16} className="text-white" fill="white" />
