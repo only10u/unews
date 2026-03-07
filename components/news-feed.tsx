@@ -313,27 +313,20 @@ function trendingToNewsItems(
     const originalTimestamp = parseOriginalTimestamp(item)
     
     if (!firstSeenAt) {
-      // 先尝试从 localStorage 读取
-      if (typeof window !== "undefined") {
-        const stored = localStorage.getItem(`firstSeen_${id}`)
-        if (stored) {
-          firstSeenAt = parseInt(stored, 10)
-          if (firstSeenMap) {
-            firstSeenMap.set(id, firstSeenAt)
-          }
+      // 先尝试从 localStorage 读取，有则沿用，无则记录当前时间
+      try {
+        const stored = typeof window !== "undefined" ? localStorage.getItem(`fs_${id}`) : null
+        firstSeenAt = stored ? parseInt(stored, 10) : (originalTimestamp || Date.now())
+        // 如果localStorage没有存储，则写入
+        if (!stored && typeof window !== "undefined") {
+          localStorage.setItem(`fs_${id}`, String(firstSeenAt))
         }
+      } catch {
+        firstSeenAt = originalTimestamp || Date.now()
       }
-    }
-    
-    if (!firstSeenAt) {
-      // 优先使用原始时间戳，否则记录当前时间作为首次发现时间
-      firstSeenAt = originalTimestamp || Date.now()
+      // 更新内存缓存
       if (firstSeenMap) {
         firstSeenMap.set(id, firstSeenAt)
-      }
-      // 持久化到 localStorage
-      if (typeof window !== "undefined") {
-        localStorage.setItem(`firstSeen_${id}`, String(firstSeenAt))
       }
     }
     const timestamp = formatRelativeTime(firstSeenAt)
@@ -425,7 +418,7 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             imageUrl: item.imageUrl || item.imageurl || (item as any).cover || (item as any).pic || "",
             videoUrl: item.videoUrl || "",
             mediaType: item.mediaType,
-            // 作者：覆盖更多可能的字段名，包括user对象
+            // 作���：覆盖更多可能的字段名，包括user对象
             topAuthor: item.author || item.authorName || item.topAuthor || item.nickname || item.user?.screen_name || "",
             // 头像：覆盖更多可能的字段名，包括user对象
             topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || item.avatar || item.user?.profile_image_url || item.user?.avatar || "",
@@ -477,28 +470,28 @@ export function NewsFeed({
   // 使用 localStorage 持久化，避免组件卸载重挂时丢失
   const firstSeenMap = useRef<Map<string, number>>(new Map())
   
-  // 从 localStorage 加载 firstSeenMap 数据
+  // 从 localStorage 加载 firstSeenMap 数据并清理旧记录
   useEffect(() => {
     if (typeof window === "undefined") return
-    const map = firstSeenMap.current
-    const now = Date.now()
-    const MAX_AGE = 48 * 60 * 60 * 1000 // 48小时
-    
-    // 清理超过48小时的旧记录
-    const keysToRemove: string[] = []
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (key?.startsWith("firstSeen_")) {
-        const val = parseInt(localStorage.getItem(key) || "0", 10)
-        if (now - val > MAX_AGE) {
-          keysToRemove.push(key)
-        } else {
-          const id = key.replace("firstSeen_", "")
-          map.set(id, val)
+    try {
+      const map = firstSeenMap.current
+      const now = Date.now()
+      const MAX_AGE = 72 * 60 * 60 * 1000 // 72小时
+      
+      // 清理超过72小时的旧记录，同时加载有效记录
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i)
+        if (key?.startsWith("fs_")) {
+          const val = parseInt(localStorage.getItem(key) || "0", 10)
+          if (now - val > MAX_AGE) {
+            localStorage.removeItem(key)
+          } else {
+            const id = key.replace("fs_", "")
+            map.set(id, val)
+          }
         }
       }
-    }
-    keysToRemove.forEach(k => localStorage.removeItem(k))
+    } catch { /* ignore localStorage errors */ }
   }, [])
 
   const handleTogglePin = useCallback((id: string) => {
@@ -623,11 +616,11 @@ export function NewsFeed({
     if (brandNew.length > 0 && prevIds.length > 0) {
       // 新消息高亮动画
       setNewItemIds(new Set(brandNew))
-      const highlightTimer = setTimeout(() => setNewItemIds(new Set()), 5000)
+      const highlightTimer = setTimeout(() => setNewItemIds(new Set()), 10000)
       
-      // 新消息临时置顶3秒
+      // 新消息临时置顶10秒
       setTempTopIds(new Set(brandNew))
-      const topTimer = setTimeout(() => setTempTopIds(new Set()), 3000)
+      const topTimer = setTimeout(() => setTempTopIds(new Set()), 10000)
       
       // 语音播报新上榜热搜（仅在非静音状态下）
       if (!isMuted) {
@@ -806,7 +799,7 @@ export function NewsFeed({
                 title={isMuted ? "开启语音播报" : "关闭语音播报"}
               >
                 {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                <span className="hidden sm:inline">{isMuted ? "语音" : "播报中"}</span>
+                <span className="hidden sm:inline">{isMuted ? "语音" : "播��中"}</span>
                 {!isMuted && (
                   <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
