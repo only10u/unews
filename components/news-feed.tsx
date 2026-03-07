@@ -209,6 +209,51 @@ function mergeNewsItem(existing: NewsItem | undefined, newItem: NewsItem): NewsI
   }
 }
 
+/** 解析原始时间戳字段（支持多种格式） */
+function parseOriginalTimestamp(item: TrendingItem): number | null {
+  // 尝试多种可能的时间戳字段名
+  const timeFields = [
+    (item as any).pubDate,
+    (item as any).created_at,
+    (item as any).createdAt,
+    (item as any).publish_time,
+    (item as any).publishTime,
+    (item as any).time,
+    (item as any).timestamp,
+    (item as any).update_time,
+    (item as any).updateTime,
+  ]
+  
+  for (const field of timeFields) {
+    if (!field) continue
+    
+    // 如果是数字（Unix时间戳，秒或毫秒）
+    if (typeof field === "number") {
+      // 判断是秒还是毫秒
+      return field > 1e12 ? field : field * 1000
+    }
+    
+    // 如果是字符串，尝试解析
+    if (typeof field === "string") {
+      const parsed = Date.parse(field)
+      if (!isNaN(parsed)) return parsed
+      
+      // 尝试解析 "x分钟前" 格式
+      const minMatch = field.match(/(\d+)\s*分钟前/)
+      if (minMatch) {
+        return Date.now() - parseInt(minMatch[1], 10) * 60 * 1000
+      }
+      
+      const hourMatch = field.match(/(\d+)\s*小时前/)
+      if (hourMatch) {
+        return Date.now() - parseInt(hourMatch[1], 10) * 60 * 60 * 1000
+      }
+    }
+  }
+  
+  return null
+}
+
 /** 格式化时间戳为相对时间 */
 function formatRelativeTime(firstSeenAt: number): string {
   const now = Date.now()
@@ -260,11 +305,16 @@ function trendingToNewsItems(
 
     const id = `${platform}-trending-${item.id}`
     
-    // 修复8: 使用首次发现时间计算相对时间
-    // 优先使用缓存中的首次发现时间，没有则记录当前时间
+    // 修复3: 优先使用接口返回的原始时间戳
+    // 1. 首先尝试从接口数据中解析原始时间戳（pubDate, created_at等）
+    // 2. 如果没有原始时间戳，则使用首次发现时间
+    // 3. 已有记录不覆盖，避免轮询刷新时间覆盖真实上榜时间
     let firstSeenAt = firstSeenMap?.get(id)
+    const originalTimestamp = parseOriginalTimestamp(item)
+    
     if (!firstSeenAt) {
-      firstSeenAt = Date.now()
+      // 优先使用原始时间戳，否则记录当前时间作为首次发现时间
+      firstSeenAt = originalTimestamp || Date.now()
       if (firstSeenMap) {
         firstSeenMap.set(id, firstSeenAt)
       }

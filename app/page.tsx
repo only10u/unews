@@ -11,6 +11,7 @@ import { AuthDialog } from "@/components/auth-dialog"
 import { PushConfig } from "@/components/push-config"
 // AudioUnlockOverlay removed - no longer prompting for audio permission
 import { TutorialDialog } from "@/components/tutorial-dialog"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 function getStoredAuth(): boolean {
   if (typeof window === "undefined") return false
@@ -51,10 +52,14 @@ export default function HomePage() {
     tweetFontSize: 14,
   })
 
+  // 移动端检测 - 移动端两栏合并为单列时禁用滚动联动
+  const isMobile = useIsMobile()
+
   // 滚动联动相关
   const mainFeedScrollRef = useRef<HTMLDivElement>(null)
   const sidebarScrollRef = useRef<HTMLDivElement>(null)
   const isScrollingSyncRef = useRef(false) // 防止循环触发
+  const scrollSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null) // 防抖定时器
 
   // Load persisted state on mount
   useEffect(() => {
@@ -110,9 +115,16 @@ export default function HomePage() {
   }, [])
 
   // 滚动联动处理：左侧滚动时同步右侧
+  // 移动端两栏合并为单列时自动禁用联动
   const handleMainFeedScroll = useCallback((scrollTop: number, scrollHeight: number, clientHeight: number) => {
-    if (isScrollingSyncRef.current || sidebarCollapsed) return
+    // 移动端或侧边栏收起时禁用联动
+    if (isMobile || isScrollingSyncRef.current || sidebarCollapsed) return
     if (!sidebarScrollRef.current) return
+    
+    // 清除之前的防抖定时器
+    if (scrollSyncTimeoutRef.current) {
+      clearTimeout(scrollSyncTimeoutRef.current)
+    }
     
     isScrollingSyncRef.current = true
     const sidebarEl = sidebarScrollRef.current
@@ -120,15 +132,23 @@ export default function HomePage() {
     const targetTop = ratio * (sidebarEl.scrollHeight - sidebarEl.clientHeight)
     sidebarEl.scrollTop = targetTop
     
-    requestAnimationFrame(() => {
+    // 使用防抖避免循环触发
+    scrollSyncTimeoutRef.current = setTimeout(() => {
       isScrollingSyncRef.current = false
-    })
-  }, [sidebarCollapsed])
+    }, 50)
+  }, [sidebarCollapsed, isMobile])
 
   // 滚动联动处理：右侧滚动时同步左侧
+  // 移动端两栏合并为单列时自动禁用联动
   const handleSidebarScroll = useCallback((scrollTop: number, scrollHeight: number, clientHeight: number) => {
-    if (isScrollingSyncRef.current || sidebarCollapsed) return
+    // 移动端或侧边栏收起时禁用联动
+    if (isMobile || isScrollingSyncRef.current || sidebarCollapsed) return
     if (!mainFeedScrollRef.current) return
+    
+    // 清除之前的防抖定时器
+    if (scrollSyncTimeoutRef.current) {
+      clearTimeout(scrollSyncTimeoutRef.current)
+    }
     
     isScrollingSyncRef.current = true
     const mainEl = mainFeedScrollRef.current
@@ -136,10 +156,11 @@ export default function HomePage() {
     const targetTop = ratio * (mainEl.scrollHeight - mainEl.clientHeight)
     mainEl.scrollTop = targetTop
     
-    requestAnimationFrame(() => {
+    // 使用防抖避免循环触发
+    scrollSyncTimeoutRef.current = setTimeout(() => {
       isScrollingSyncRef.current = false
-    })
-  }, [sidebarCollapsed])
+    }, 50)
+  }, [sidebarCollapsed, isMobile])
 
   return (
     <div className="min-h-screen bg-background">
