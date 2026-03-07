@@ -21,36 +21,9 @@ export async function GET(request: Request) {
       }
     )
     const html = await res.text()
-    console.log('douyin html preview:', html.slice(0, 300))
-
-    // 从 __NEXT_DATA__ 提取视频数据
-    const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
-    if (!nextDataMatch) {
-      console.log('douyin: no __NEXT_DATA__ found, html preview:', html.slice(0, 500))
-      return NextResponse.json({ success: false, error: "no next data" })
-    }
-
-    const nextData = JSON.parse(nextDataMatch[1])
-    const pageProps = nextData?.props?.pageProps || {}
-    console.log('douyin pageProps keys:', JSON.stringify(Object.keys(pageProps)))
-    console.log('douyin pageProps sample:', JSON.stringify(pageProps).slice(0, 800))
-
-    const videoList =
-      nextData?.props?.pageProps?.videoList ||
-      nextData?.props?.pageProps?.data?.videoList ||
-      []
-
-    const first = videoList[0]
-    if (!first) return NextResponse.json({ success: false, error: "no video found" })
-
-    const aweme = first?.awemeInfo || first
     return NextResponse.json({
-      success: true,
-      avatar: "https://sf1-cdn-tos.douyinstatic.com/obj/eden-cn/uhtyvueh7nulogpoguhm/douyin-logo.png",
-      author: aweme?.author?.nickname || aweme?.authorInfo?.nickName || "抖音用户",
-      content: (aweme?.desc || aweme?.video?.desc || keyword).slice(0, 120),
-      imageUrl: aweme?.video?.cover?.urlList?.[0] || aweme?.video?.dynamicCover?.urlList?.[0] || "",
-      url: `https://www.douyin.com/video/${aweme?.awemeId || aweme?.id || ""}`,
+      status: res.status,
+      preview: html.slice(0, 3000)
     })
   } catch (e) {
     return NextResponse.json({ success: false, error: String(e) })

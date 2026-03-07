@@ -27,38 +27,9 @@ export async function GET(request: Request) {
       }
     )
     const html = await res.text()
-    console.log('sogou html:', html.slice(0, 1500))
-
-    // 解析公众号名称
-    const accountMatch = html.match(/class="tit"[^>]*>([^<]+)</)
-    // 解析最新文章标题
-    const titleMatch = html.match(/class="wx-rb[^"]*"[^>]*title="([^"]+)"/)
-    // 解析文章链接
-    const urlMatch = html.match(/class="wx-rb[^"]*"[^>]*href="([^"]+)"/)
-    // 解析封面图
-    const imgMatch = html.match(/class="wx-rb[^"]*"[\s\S]*?<img[^>]*src="([^"]+)"/)
-    // 解析摘要
-    const summaryMatch = html.match(/class="txt-info"[^>]*>([\s\S]*?)<\/p>/)
-
-    const title = titleMatch?.[1] || ""
-    const url = urlMatch?.[1] || ""
-    const imageUrl = imgMatch?.[1] || ""
-    const summary = summaryMatch?.[1]?.replace(/<[^>]+>/g, "").trim().slice(0, 100) || ""
-
-    if (!title && !url) {
-      return NextResponse.json({ success: false, error: "no article found" })
-    }
-
     return NextResponse.json({
-      success: true,
-      data: {
-        author: account,
-        title,
-        summary,
-        imageUrl,
-        pubDate: "",
-        url: url.startsWith("http") ? url : `https://weixin.sogou.com${url}`,
-      },
+      status: res.status,
+      preview: html.slice(0, 3000)
     })
   } catch (e) {
     return NextResponse.json({ success: false, error: String(e) })
