@@ -70,6 +70,8 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   const [memeItems, setMemeItems] = useState<MemeItem[]>([])
   const [isLoadingMeme, setIsLoadingMeme] = useState(false)
 
+  console.log("[v0] HotOverview rendered, items count:", items.length)
+
   // 计算趋势变化数据
   const trendItems = useMemo<TrendItem[]>(() => {
     const trends: TrendItem[] = []
@@ -115,6 +117,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   // 获取Meme潜力榜
   const fetchMemePotential = useCallback(async () => {
     if (items.length === 0) return
+    console.log("[v0] Fetching meme potential, items:", items.length)
     setIsLoadingMeme(true)
     try {
       const res = await fetch("/api/ai/meme-potential", {
@@ -128,12 +131,14 @@ export function HotOverview({ items, className }: HotOverviewProps) {
           })),
         }),
       })
+      console.log("[v0] Meme API response status:", res.status)
       if (res.ok) {
         const data = await res.json()
+        console.log("[v0] Meme data received:", data)
         setMemeItems(data.memes || [])
       }
     } catch (e) {
-      console.error("Failed to fetch meme potential:", e)
+      console.error("[v0] Failed to fetch meme potential:", e)
     } finally {
       setIsLoadingMeme(false)
     }

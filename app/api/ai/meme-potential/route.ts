@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-
-const CLAUDE_MODEL = "claude-sonnet-4-20250514"
+import { generateText } from "ai"
 
 interface NewsItem {
   id: string
@@ -44,27 +43,11 @@ ${itemList}
 
 如果没有合适的meme潜力新闻，返回：{"memes": []}`
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY || "",
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: CLAUDE_MODEL,
-        max_tokens: 800,
-        messages: [{ role: "user", content: prompt }],
-      }),
+    const { text } = await generateText({
+      model: "anthropic/claude-sonnet-4-20250514" as any,
+      prompt,
+      maxTokens: 800,
     })
-
-    if (!response.ok) {
-      console.error("Claude API error:", response.status)
-      return NextResponse.json({ memes: [] })
-    }
-
-    const data = await response.json()
-    const text = data.content?.[0]?.text || ""
 
     // 解析JSON
     try {

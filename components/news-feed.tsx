@@ -450,11 +450,16 @@ export function NewsFeed({
 
   // 语音播报函数
   const speakNewItem = useCallback((platform: string, title: string) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return
+    console.log("[v0] speakNewItem called:", platform, title)
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      console.log("[v0] speechSynthesis not available")
+      return
+    }
     
     const platformLabel = platform === "weibo" ? "微博" : platform === "douyin" ? "抖音" : "公众号"
     const text = `${platformLabel}新消息：${title}`
     
+    console.log("[v0] Speaking:", text)
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = "zh-CN"
     utterance.rate = 1.0
@@ -479,8 +484,10 @@ export function NewsFeed({
       const timer = setTimeout(() => setNewItemIds(new Set()), 5000)
       
       // 语音播报新上榜热搜（仅在非静音状态下）
+      console.log("[v0] New items detected:", brandNew.length, "isMuted:", isMuted)
       if (!isMuted) {
         const newItems = allItems.filter(item => brandNew.includes(item.id))
+        console.log("[v0] Will speak first new item:", newItems[0]?.title)
         // 只播报第一条新上榜的，避免连续播报太多
         if (newItems.length > 0) {
           speakNewItem(newItems[0].platform, newItems[0].title)
@@ -676,6 +683,11 @@ export function NewsFeed({
         </div>
       </div>
 
+      {/* 热点速览区域 - 仅聚合板块显示 */}
+      {activeChannel === "aggregate" && (
+        <HotOverview items={allItems} />
+      )}
+
       {/* News List */}
       <div ref={scrollRef} className="h-[calc(100vh-56px-48px-49px)] overflow-y-auto">
         <div>
@@ -781,10 +793,6 @@ export function NewsFeed({
             </div>
           )}
 
-          {/* 热点速览区域 */}
-          {activeChannel === "aggregate" && (
-            <HotOverview items={allItems} />
-          )}
         </div>
       </div>
     </div>
