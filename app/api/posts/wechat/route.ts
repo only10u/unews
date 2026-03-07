@@ -37,6 +37,7 @@ export async function GET(request: Request) {
     const title = titleBlockMatch?.[1]
       ?.replace(/<!--[\s\S]*?-->/g, "")
       ?.replace(/<[^>]+>/g, "")
+      ?.replace(/^[\s\S]*?[:：]/, "")
       ?.trim() || ""
 
     // 匹配第一条摘要
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
       ?.slice(0, 100) || ""
 
     // 匹配图片：取 sogou 缩略图里的原始 url 参数值并 decode
-    const imgMatch = html.match(/id="sogou_vr_11002601_img_0"[\s\S]*?url=([^&"]+)/)
+    const imgMatch = html.match(/id="sogou_vr_11002601_img_0"[\s\S]*?url=(https?%3A%2F%2F[^&"]+)/)
     let imageUrl = ""
     if (imgMatch?.[1]) {
       try { imageUrl = decodeURIComponent(imgMatch[1]) } catch { imageUrl = "" }
