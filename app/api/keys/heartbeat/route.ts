@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
-  const body = await req.json()
   try {
-    const res = await fetch("http://1.12.248.87:3003/keys/activate", {
+    const body = await req.json()
+    const res = await fetch("http://1.12.248.87:3003/keys/heartbeat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

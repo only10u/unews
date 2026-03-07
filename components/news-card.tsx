@@ -230,25 +230,6 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
   // Rank badge and background color based on rank change
   const delta = item.rankDelta ?? 0
   
-  // 根据规则计算左侧边框颜色：
-  // isTempTop（新上榜置顶中）→ 淡绿色闪烁
-  // platformRank <= 3（平台热搜前三）→ 淡黄色静态
-  // rankDelta >= 1 或 isBursting（趋势上升）→ 淡红色静态
-  // 其他 → 无边框
-  const getLeftBorderClass = (): string => {
-    if (isTempTop) {
-      return "border-l-2 border-emerald-400/60 animate-pulse"
-    }
-    if (item.platformRank && item.platformRank <= 3) {
-      return "border-l-2 border-yellow-400/40"
-    }
-    if ((item.rankDelta && item.rankDelta >= 1) || item.isBursting) {
-      return "border-l-2 border-red-400/40"
-    }
-    return "border-l-2 border-transparent"
-  }
-  const leftBorderClass = getLeftBorderClass()
-  
   const rankBadge = item.platformRank ? (
     <span className="inline-flex items-center gap-1 text-[11px] font-mono">
       <span className="text-muted-foreground">{getPlatformShort(item.platform)}</span>
@@ -263,9 +244,7 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
       className={cn(
         "group relative transition-all border-b border-border/30 hover:bg-accent/30",
         isNew && "animate-new-item animate-slide-in",
-        isPinned && "pinned-glow bg-primary/[0.03]",
-        // 左侧边框光效：根据条件显示不同颜色
-        leftBorderClass
+        isPinned && "pinned-glow bg-primary/[0.03]"
       )}
     >
       {/* 新消息闪烁灯条 - 置顶期间显示 */}
