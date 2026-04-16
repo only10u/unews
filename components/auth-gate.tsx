@@ -3,6 +3,11 @@
 import { useState, useEffect, useRef, type ReactNode } from "react"
 import { Loader2 } from "lucide-react"
 
+/** 构建时设为 true：自建站跳过密钥与验证请求（与 app/page 是否引用 AuthGate 无关，防止旧包仍含门禁） */
+const SKIP_AUTH_GATE =
+  typeof process.env.NEXT_PUBLIC_SKIP_AUTH_GATE !== "undefined" &&
+  process.env.NEXT_PUBLIC_SKIP_AUTH_GATE === "true"
+
 interface AuthGateProps {
   children: ReactNode
 }
@@ -17,7 +22,7 @@ function getDeviceId(): string {
   return deviceId
 }
 
-export function AuthGate({ children }: AuthGateProps) {
+function AuthGateInner({ children }: AuthGateProps) {
   const [isVerifying, setIsVerifying] = useState(true)
   const [isAuthed, setIsAuthed] = useState(false)
   const [keyInput, setKeyInput] = useState("")
@@ -26,7 +31,6 @@ export function AuthGate({ children }: AuthGateProps) {
   const [expiresAt, setExpiresAt] = useState<number | null>(null)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // 验证已存储的 token
   useEffect(() => {
     async function verifyToken() {
       const token = localStorage.getItem("auth_token")
@@ -40,9 +44,10 @@ export function AuthGate({ children }: AuthGateProps) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token, deviceId: getDeviceId() }),
+          signal: AbortSignal.timeout(12_000),
         })
         const data = await res.json()
-        
+
         if (data.valid) {
           setIsAuthed(true)
           setExpiresAt(data.expiresAt || null)
@@ -51,14 +56,13 @@ export function AuthGate({ children }: AuthGateProps) {
           localStorage.removeItem("auth_token")
         }
       } catch {
-        // 网络错误时信任本地缓存
         setIsAuthed(true)
       }
       setIsVerifying(false)
     }
 
     verifyToken()
-    
+
     return () => {
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current)
@@ -66,31 +70,28 @@ export function AuthGate({ children }: AuthGateProps) {
     }
   }, [])
 
-  // 启动心跳
   const startHeartbeat = (token: string) => {
     if (heartbeatRef.current) {
       clearInterval(heartbeatRef.current)
     }
-    
+
     const sendHeartbeat = async () => {
       try {
         await fetch("/api/keys/heartbeat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
+          signal: AbortSignal.timeout(10_000),
         })
       } catch {
         // 静默失败
       }
     }
-    
-    // 立即发送一次
+
     sendHeartbeat()
-    // 每30秒发送心跳
     heartbeatRef.current = setInterval(sendHeartbeat, 30000)
   }
 
-  // 激活密钥
   const handleActivate = async () => {
     const trimmed = keyInput.trim().toUpperCase()
     if (!trimmed) return
@@ -106,6 +107,7 @@ export function AuthGate({ children }: AuthGateProps) {
           key: trimmed,
           deviceId: getDeviceId(),
         }),
+        signal: AbortSignal.timeout(15_000),
       })
 
       const data = await res.json()
@@ -125,7 +127,6 @@ export function AuthGate({ children }: AuthGateProps) {
     setIsLoading(false)
   }
 
-  // 加载中状态
   if (isVerifying) {
     return (
       <div className="fixed inset-0 z-[100] bg-background flex items-center justify-center">
@@ -137,12 +138,10 @@ export function AuthGate({ children }: AuthGateProps) {
     )
   }
 
-  // 已验证，显示内容
   if (isAuthed) {
     return <>{children}</>
   }
 
-  // 未验证，显示密钥输入弹窗
   return (
     <div className="fixed inset-0 z-[100] bg-background flex items-center justify-center">
       <div className="w-full max-w-sm mx-4 p-8 rounded-2xl border border-border bg-card space-y-6">
@@ -151,7 +150,7 @@ export function AuthGate({ children }: AuthGateProps) {
           <h1 className="text-lg font-semibold text-foreground">热点新闻</h1>
           <p className="text-sm text-muted-foreground">请输入访问密钥以继续使用</p>
         </div>
-        
+
         <input
           type="text"
           value={keyInput}
@@ -160,7 +159,7 @@ export function AuthGate({ children }: AuthGateProps) {
           className="w-full px-4 py-3 rounded-lg border border-border bg-secondary text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           placeholder="DOUU-XXXX-XXXX-XXXX"
         />
-        
+
         <button
           onClick={handleActivate}
           disabled={isLoading || !keyInput.trim()}
@@ -175,11 +174,11 @@ export function AuthGate({ children }: AuthGateProps) {
             "验证密钥"
           )}
         </button>
-        
+
         {error && (
           <p className="text-xs text-destructive text-center">{error}</p>
         )}
-        
+
         {expiresAt && (
           <p className="text-xs text-muted-foreground text-center">
             {"有效期至 " + new Date(expiresAt).toLocaleDateString("zh-CN")}
@@ -188,4 +187,11 @@ export function AuthGate({ children }: AuthGateProps) {
       </div>
     </div>
   )
+}
+
+export function AuthGate({ children }: AuthGateProps) {
+  if (SKIP_AUTH_GATE) {
+    return <>{children}</>
+  }
+  return <AuthGateInner>{children}</AuthGateInner>
 }
