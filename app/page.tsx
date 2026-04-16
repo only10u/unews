@@ -7,24 +7,9 @@ import { NewsFeed } from "@/components/news-feed"
 import { HotSidebar } from "@/components/hot-sidebar"
 import { TickerTape } from "@/components/ticker-tape"
 import { SoundControl } from "@/components/sound-control"
-import { AuthDialog } from "@/components/auth-dialog"
-import { AuthGate } from "@/components/auth-gate"
-
 // AudioUnlockOverlay removed - no longer prompting for audio permission
 import { TutorialDialog } from "@/components/tutorial-dialog"
 import { useIsMobile } from "@/hooks/use-mobile"
-
-function getStoredAuth(): boolean {
-  if (typeof window === "undefined") return false
-  try {
-    const saved = localStorage.getItem("dou-u-auth")
-    if (saved) {
-      const data = JSON.parse(saved)
-      return data.expiresAt > Date.now()
-    }
-  } catch { /* ignore */ }
-  return false
-}
 
 function getStoredPushConfig(): { scoreThreshold: number; keywords: string[] } {
   if (typeof window === "undefined") return { scoreThreshold: 0, keywords: [] }
@@ -40,10 +25,8 @@ export default function HomePage() {
   const [isMuted, setIsMuted] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [soundSettingsOpen, setSoundSettingsOpen] = useState(false)
-  const [authDialogOpen, setAuthDialogOpen] = useState(false)
-
   const [tutorialOpen, setTutorialOpen] = useState(false)
-  const [isAuthed, setIsAuthed] = useState(true) // Temporarily: all users have full access
+  const [isAuthed] = useState(true)
   const [aiDenoiseEnabled, setAiDenoiseEnabled] = useState(false)
   const [scoreThreshold, setScoreThreshold] = useState(0)
   const [keywords, setKeywords] = useState<string[]>([])
@@ -62,9 +45,8 @@ export default function HomePage() {
   const isScrollingSyncRef = useRef(false) // 防止循环触发
   const scrollSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null) // 防抖定时器
 
-  // Load persisted state on mount
+  // Load persisted push config on mount
   useEffect(() => {
-    setIsAuthed(getStoredAuth())
     const cfg = getStoredPushConfig()
     setScoreThreshold(cfg.scoreThreshold)
     setKeywords(cfg.keywords)
@@ -164,7 +146,6 @@ export default function HomePage() {
   }, [sidebarCollapsed, isMobile])
 
   return (
-    <AuthGate>
     <div className="min-h-screen bg-background">
       {/* Top Navigation */}
       <TopNav
@@ -189,7 +170,6 @@ export default function HomePage() {
             activeChannel={activeChannel}
             aiDenoiseEnabled={aiDenoiseEnabled}
             isAuthed={isAuthed}
-            onOpenAuthDialog={() => setAuthDialogOpen(true)}
             scoreThreshold={scoreThreshold}
             keywords={keywords}
             tweetFontSize={fontSettings.tweetFontSize}
@@ -223,13 +203,6 @@ export default function HomePage() {
         onClose={() => setSoundSettingsOpen(false)}
       />
 
-      {/* Auth Dialog */}
-      <AuthDialog
-        isOpen={authDialogOpen}
-        onClose={() => setAuthDialogOpen(false)}
-        onAuth={setIsAuthed}
-      />
-
       {/* Tutorial Dialog */}
       <TutorialDialog
         isOpen={tutorialOpen}
@@ -238,6 +211,5 @@ export default function HomePage() {
 
 
     </div>
-    </AuthGate>
   )
 }
