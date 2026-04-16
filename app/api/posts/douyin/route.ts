@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -7,7 +8,7 @@ export async function GET(request: Request) {
 
   try {
     const res = await fetch(
-      `http://1.12.248.87:3001/api/trending/douyin`,
+      `${UPSTREAM_TRENDING_3001}/api/trending/douyin`,
       { next: { revalidate: 300 } }
     )
     const list = await res.json() // 数组

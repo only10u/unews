@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server"
+import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
+
+export const dynamic = "force-dynamic"
 
 // Returns NewsItem[] format for frontend
 export async function GET() {
   try {
-    const res = await fetch("http://1.12.248.87:3001/api/trending/weibo", {
-      next: { revalidate: 300 },
+    const url = `${UPSTREAM_TRENDING_3001}/api/trending/weibo`
+    const res = await fetch(url, {
+      cache: "no-store",
       signal: AbortSignal.timeout(25000),
     })
     if (!res.ok) throw new Error(`upstream ${res.status}`)
     const rawData = await res.json()
-    
+    const list = Array.isArray(rawData) ? rawData : (rawData as { data?: unknown })?.data
+    if (!Array.isArray(list)) {
+      console.error("[WEIBO-API] upstream not array:", url, typeof rawData)
+      return NextResponse.json([], { status: 200 })
+    }
+
     // 过滤广告条目
-    const filtered = rawData.filter((item: any) => {
+    const filtered = list.filter((item: any) => {
       // 过滤 is_ad 字段
       if (item.is_ad) return false
       // 过滤 ad_type 字段

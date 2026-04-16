@@ -1,18 +1,27 @@
 import { NextResponse } from "next/server"
+import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
+
+export const dynamic = "force-dynamic"
 
 // Returns NewsItem[] format for frontend
 export async function GET() {
   try {
-    const res = await fetch("http://1.12.248.87:3001/api/trending/gzh", {
-      next: { revalidate: 300 },
+    const url = `${UPSTREAM_TRENDING_3001}/api/trending/gzh`
+    const res = await fetch(url, {
+      cache: "no-store",
       signal: AbortSignal.timeout(25000),
     })
     if (!res.ok) throw new Error(`upstream ${res.status}`)
     const raw = await res.json()
-    
+    const list = Array.isArray(raw) ? raw : (raw as { data?: unknown })?.data
+    if (!Array.isArray(list)) {
+      console.error("[GZH-API] upstream not array:", url, typeof raw)
+      return NextResponse.json([], { status: 200 })
+    }
+
     // Map to NewsItem format expected by frontend
     // 扩展字段映射，覆盖公众号API可能的各种字段名
-    const data = raw.map((item: any, i: number) => ({
+    const data = list.map((item: any, i: number) => ({
       id: `g${i + 1}`,
       title: item.title || item.name || "",
       hotValue: item.hotValue || item.reading_count || item.read_num || 0,

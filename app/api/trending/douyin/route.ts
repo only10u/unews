@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server"
+import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
 
 // Returns NewsItem[] format for frontend
 export async function GET() {
   try {
-    const res = await fetch("http://1.12.248.87:3001/api/trending/douyin", {
+    const res = await fetch(`${UPSTREAM_TRENDING_3001}/api/trending/douyin`, {
       next: { revalidate: 300 },
       signal: AbortSignal.timeout(25000),
     })
