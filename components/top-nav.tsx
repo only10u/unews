@@ -11,6 +11,8 @@ import {
   Minus,
   Plus,
 } from "lucide-react"
+import Link from "next/link"
+import { X_FOLLOW_URL } from "@/lib/site"
 
 import { useTheme } from "next-themes"
 import { useEffect, useState, useRef } from "react"
@@ -79,16 +81,37 @@ export function TopNav({
       <div className="flex items-center justify-between px-4 h-14">
         {/* Left: Logo */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <img
-            src={LOGO_URL}
-            alt="热点新闻"
-            width={32}
-            height={32}
-            className="rounded-lg object-cover"
-          />
-          <h1 className="text-foreground font-bold text-lg tracking-tight hidden sm:block">
-            热点新闻
-          </h1>
+          <a
+            href={X_FOLLOW_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-lg ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label="在 X 上关注"
+            title="在 X 上关注 @10UWINA8"
+          >
+            <img
+              src={LOGO_URL}
+              alt="热点新闻"
+              width={32}
+              height={32}
+              className="rounded-lg object-cover"
+            />
+          </a>
+          <div className="hidden sm:flex items-center gap-2 min-w-0">
+            <h1 className="text-foreground font-bold text-lg tracking-tight truncate">热点新闻</h1>
+            <Link
+              href="/skill"
+              className="text-sm font-semibold text-cyan-500 hover:text-cyan-400 transition-colors"
+            >
+              Skill
+            </Link>
+          </div>
+          <Link
+            href="/skill"
+            className="sm:hidden text-xs font-semibold text-cyan-500 shrink-0"
+          >
+            Skill
+          </Link>
         </div>
 
         {/* Center: Channel tabs */}

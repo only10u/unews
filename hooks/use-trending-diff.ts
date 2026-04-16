@@ -47,9 +47,9 @@ export function useTrendingDiff() {
     "trending-diff",
     fetchTrendingDiff,
     {
-      refreshInterval: 10 * 60 * 1000, // 每10分钟刷新
-      revalidateOnFocus: false,
-      dedupingInterval: 60 * 1000, // 1分钟内不重复请求
+      refreshInterval: 60 * 1000, // 每分钟拉取，与后端「近10分钟窗口」快照对齐
+      revalidateOnFocus: true,
+      dedupingInterval: 15 * 1000,
     }
   )
 

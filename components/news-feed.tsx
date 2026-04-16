@@ -520,17 +520,17 @@ export function NewsFeed({
   const { data: weiboTrending, isLoading: weiboLoading, mutate: mutateWeibo } = useSWR(
     "weibo",
     trendingFetcher,
-    { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
+    { refreshInterval: 10_000, revalidateOnFocus: true, dedupingInterval: 4000 }
   )
   const { data: douyinTrending, isLoading: douyinLoading, mutate: mutateDouyin } = useSWR(
     "douyin",
     trendingFetcher,
-    { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
+    { refreshInterval: 10_000, revalidateOnFocus: true, dedupingInterval: 4000 }
   )
   const { data: gzhTrending, isLoading: gzhLoading, mutate: mutateGzh } = useSWR(
     "gzh",
     trendingFetcher,
-    { refreshInterval: 15000, revalidateOnFocus: false, dedupingInterval: 5000 }
+    { refreshInterval: 10_000, revalidateOnFocus: true, dedupingInterval: 4000 }
   )
   
   // Compute loading state based on active channel

@@ -6,6 +6,7 @@ import { PLATFORM_ICONS } from "@/lib/mock-data"
 import { TrendingUp, TrendingDown, Activity } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
+import { X_FOLLOW_URL } from "@/lib/site"
 
 interface CryptoPriceData {
   symbol: string
@@ -111,7 +112,7 @@ export function TickerTape() {
         <div className="flex items-center gap-2 shrink-0 ml-4">
           {/* Social Links */}
           <a
-            href="https://x.com/10UWINA8"
+            href={X_FOLLOW_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"

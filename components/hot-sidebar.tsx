@@ -5,9 +5,6 @@ import { cn } from "@/lib/utils"
 import {
   type Platform,
   type TrendingItem,
-  mockWeiboTrending,
-  mockDouyinTrending,
-  mockGzhTrending,
   formatHotValue,
   PLATFORM_ICONS,
   PLATFORM_OFFICIAL_URLS,
@@ -262,13 +259,8 @@ function TrendingList({
                   <Flame size={9} />
                 </span>
               )}
-              {/* 排名变化显示 */}
-              {!isNew && delta > 5 && (
-                <span className="shrink-0 flex items-center gap-0.5 text-[10px] text-red-500 font-bold font-mono">
-                  <TrendingUp size={10} /><TrendingUp size={10} />
-                </span>
-              )}
-              {!isNew && delta > 0 && delta <= 5 && (
+              {/* 排名变化：上升红箭头+名次，下降绿箭头+名次 */}
+              {!isNew && delta > 0 && (
                 <span className="shrink-0 flex items-center gap-0.5 text-[10px] text-red-500 font-bold font-mono">
                   <TrendingUp size={10} />
                   {delta}
@@ -355,18 +347,25 @@ export function HotSidebar({
   const isWide = sidebarWidth >= WIDE_THRESHOLD
 
   const { data: weiboRaw, isValidating: weiboLoading } = useSWR("weibo", trendingFetcher, {
-    refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockWeiboTrending,
+    refreshInterval: 15_000,
+    revalidateOnFocus: true,
+    dedupingInterval: 5_000,
   })
   const { data: douyinRaw, isValidating: douyinLoading } = useSWR("douyin", trendingFetcher, {
-    refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockDouyinTrending,
+    refreshInterval: 15_000,
+    revalidateOnFocus: true,
+    dedupingInterval: 5_000,
   })
   const { data: gzhRaw, isValidating: gzhLoading } = useSWR("gzh", trendingFetcher, {
-    refreshInterval: 1000, revalidateOnFocus: false, fallbackData: mockGzhTrending,
+    refreshInterval: 15_000,
+    revalidateOnFocus: true,
+    dedupingInterval: 5_000,
   })
 
-  const weiboBase = weiboRaw && weiboRaw.length > 0 ? weiboRaw : mockWeiboTrending
-  const douyinBase = douyinRaw && douyinRaw.length > 0 ? douyinRaw : mockDouyinTrending
-  const gzhBase = gzhRaw && gzhRaw.length > 0 ? gzhRaw : mockGzhTrending
+  // 不再用假数据兜底，避免接口偶发空时「回到出厂榜单」
+  const weiboBase = weiboRaw ?? []
+  const douyinBase = douyinRaw ?? []
+  const gzhBase = gzhRaw ?? []
 
   const weibo = useRankTracking(weiboBase, "weibo")
   const douyin = useRankTracking(douyinBase, "douyin")

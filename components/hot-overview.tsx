@@ -65,9 +65,15 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   // 使用共享的趋势变化数据
   const { all: trendItems, lastUpdate, isLoading: isTrendLoading, refresh: refreshTrend } = useTrendingDiff()
 
-  // 取前10条趋势变化
+  // 优先展示「上升」条目（10 分钟窗口内），再按变动幅度排序
   const displayTrendItems = useMemo(() => {
-    return trendItems.slice(0, 10)
+    const sorted = [...trendItems].sort((a, b) => {
+      const upA = a.rankChange > 0 ? 1 : 0
+      const upB = b.rankChange > 0 ? 1 : 0
+      if (upB !== upA) return upB - upA
+      return Math.abs(b.rankChange) - Math.abs(a.rankChange)
+    })
+    return sorted.slice(0, 10)
   }, [trendItems])
 
   // 一键复制
@@ -106,7 +112,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
             <span>上次更新: {lastUpdate ? formatLastUpdate(lastUpdate) : "--:--"}</span>
           </div>
           <span className="text-muted-foreground/50">|</span>
-          <span>每10分钟更新</span>
+          <span>每分钟同步 · 近10分钟变动</span>
           
           <div className="flex items-center gap-1 ml-2">
             <button
@@ -140,8 +146,9 @@ export function HotOverview({ items, className }: HotOverviewProps) {
           {/* 趋势变化 */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <TrendingUp size={14} className="text-emerald-500" />
+              <TrendingUp size={14} className="text-red-500" />
               <h4 className="text-sm font-semibold text-foreground">趋势变化</h4>
+              <span className="text-[10px] text-muted-foreground">（优先显示上升）</span>
               <span className="text-[10px] text-muted-foreground">({displayTrendItems.length}条)</span>
             </div>
             
@@ -177,10 +184,10 @@ export function HotOverview({ items, className }: HotOverviewProps) {
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0">
                           #{item.prevRank}→#{item.rank}
                           {item.rankChange > 0 && (
-                            <span className="text-emerald-500 ml-0.5">上升{item.rankChange}名</span>
+                            <span className="text-red-500 ml-0.5 font-medium">↑{item.rankChange}</span>
                           )}
                           {item.rankChange < 0 && (
-                            <span className="text-red-400 ml-0.5">下降{Math.abs(item.rankChange)}名</span>
+                            <span className="text-emerald-500 ml-0.5 font-medium">↓{Math.abs(item.rankChange)}</span>
                           )}
                         </span>
                       )}
