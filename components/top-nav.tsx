@@ -101,14 +101,24 @@ export function TopNav({
             <h1 className="text-foreground font-bold text-lg tracking-tight truncate">热点新闻</h1>
             <Link
               href="/skill"
-              className="text-sm font-semibold text-cyan-500 hover:text-cyan-400 transition-colors"
+              className={cn(
+                "inline-flex items-center justify-center shrink-0 rounded-md border-2 border-amber-400",
+                "bg-amber-500/15 px-2.5 py-1 text-sm font-semibold text-amber-200",
+                "shadow-sm hover:bg-amber-500/25 hover:text-amber-50 transition-colors",
+                "dark:border-amber-500/90 dark:bg-amber-950/40"
+              )}
             >
               Skill
             </Link>
           </div>
           <Link
             href="/skill"
-            className="sm:hidden text-xs font-semibold text-cyan-500 shrink-0"
+            className={cn(
+              "sm:hidden inline-flex items-center justify-center shrink-0 rounded-md border-2 border-amber-400",
+              "bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-200",
+              "shadow-sm hover:bg-amber-500/25 transition-colors",
+              "dark:border-amber-500/90 dark:bg-amber-950/40"
+            )}
           >
             Skill
           </Link>

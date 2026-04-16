@@ -56,6 +56,17 @@ export function parsePublishedMsFromRaw(item: unknown): number | undefined {
     if (typeof c === "number") return c > 1e12 ? c : c * 1000
   }
 
+  // crawl4weibo / 微博 mblog 等嵌套结构
+  const mblog = o.mblog as Record<string, unknown> | undefined
+  if (mblog && typeof mblog === "object") {
+    const c = mblog.created_at ?? mblog.createdAt
+    if (typeof c === "number") return c > 1e12 ? c : c * 1000
+    if (typeof c === "string") {
+      const p = Date.parse(c)
+      if (!Number.isNaN(p)) return p
+    }
+  }
+
   return undefined
 }
 
@@ -73,7 +84,7 @@ function mergeOneRow(row: Record<string, unknown>, e: Record<string, unknown>): 
   return {
     ...row,
     summary: pickStr(
-      e.summary ?? e.text ?? e.snippet ?? e.digest ?? e.abstract,
+      e.summary ?? e.text ?? e.snippet ?? e.digest ?? e.abstract ?? (e.mblog as { text?: string } | undefined)?.text,
       row.summary
     ),
     detailContent: pickStr(

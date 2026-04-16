@@ -32,8 +32,8 @@ export default function SkillPage() {
           <div className="rounded-lg bg-amber-950/40 border border-amber-500/50 px-4 py-2 text-center mb-4">
             <span className="text-2xl font-black tracking-tight text-amber-200 drop-shadow-sm">Skill</span>
           </div>
-          <p className="text-xs text-amber-200/90 mb-3 text-center">
-            使用说明：让 Agent 按文档调用本站公开 JSON，与「热点速览」数据同源。
+          <p className="text-sm text-amber-100 mb-3 text-center font-medium">
+            复制粘贴以下内容投喂给Agent
           </p>
           <div className="rounded-lg bg-amber-950/30 p-3 font-mono text-[11px] text-amber-100 break-all border border-amber-600/40">
             Read {skillUrl} and follow the instructions to call the JSON APIs.
@@ -52,7 +52,11 @@ export default function SkillPage() {
           <a href="/dou-u-skill.md" className="text-amber-500 underline underline-offset-2" target="_blank">
             /dou-u-skill.md
           </a>{" "}
-          直接访问。
+          直接访问；部署新爬虫（crawl4weibo / 抖音 / 公众号）见{" "}
+          <a href="/crawler-new-mechanism.md" className="text-amber-500 underline underline-offset-2" target="_blank">
+            /crawler-new-mechanism.md
+          </a>
+          。
         </p>
 
         <p className="text-sm text-muted-foreground/90">

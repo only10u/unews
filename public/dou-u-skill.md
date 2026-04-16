@@ -6,6 +6,8 @@
 
 将 `https://你的域名` 替换为实际部署地址（如 `https://10unews.com`）。
 
+更换 **crawl4weibo / 新抖音 / 新公众号** 爬取机制时，请阅读站内说明：**[crawler-new-mechanism.md](/crawler-new-mechanism.md)**。
+
 ## HTTP 接口一览
 
 | 说明 | 方法 | 路径 |
