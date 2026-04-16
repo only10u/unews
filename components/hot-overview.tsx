@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useTrendingDiff, type TrendingDiffItem } from "@/hooks/use-trending-diff"
+import { useRise12h } from "@/hooks/use-rise12h"
 import {
   ChevronDown,
   ChevronUp,
@@ -62,11 +63,17 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // 使用共享的趋势变化数据
-  const { all: trendItems, lastUpdate, isLoading: isTrendLoading, refresh: refreshTrend } = useTrendingDiff()
+  const { all: trendItems, lastUpdate: diffLastUpdate, isLoading: isDiffLoading, refresh: refreshDiff } = useTrendingDiff()
+  const { items: rise12hItems, lastUpdate: rise12hUpdate, isLoading: isRiseLoading, refresh: refreshRise12h, source: riseSource } = useRise12h()
 
-  // 优先展示「上升」条目（10 分钟窗口内），再按变动幅度排序
+  const lastUpdate = rise12hUpdate || diffLastUpdate
+  const isTrendLoading = isDiffLoading || isRiseLoading
+
+  // 优先使用「12 小时升幅」接口；否则回退为 diff 中升幅最大的 10 条
   const displayTrendItems = useMemo(() => {
+    if (rise12hItems.length > 0) {
+      return rise12hItems.slice(0, 10)
+    }
     const sorted = [...trendItems].sort((a, b) => {
       const upA = a.rankChange > 0 ? 1 : 0
       const upB = b.rankChange > 0 ? 1 : 0
@@ -74,7 +81,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
       return Math.abs(b.rankChange) - Math.abs(a.rankChange)
     })
     return sorted.slice(0, 10)
-  }, [trendItems])
+  }, [trendItems, rise12hItems])
 
   // 一键复制
   const handleCopy = useCallback(() => {
@@ -94,8 +101,9 @@ export function HotOverview({ items, className }: HotOverviewProps) {
   }, [displayTrendItems])
 
   const handleRefresh = useCallback(() => {
-    refreshTrend()
-  }, [refreshTrend])
+    void refreshDiff()
+    void refreshRise12h()
+  }, [refreshDiff, refreshRise12h])
 
   return (
     <div className={cn("border-t border-border/30 bg-card/50", className)}>
@@ -112,7 +120,9 @@ export function HotOverview({ items, className }: HotOverviewProps) {
             <span>上次更新: {lastUpdate ? formatLastUpdate(lastUpdate) : "--:--"}</span>
           </div>
           <span className="text-muted-foreground/50">|</span>
-          <span>每分钟同步 · 近10分钟变动</span>
+          <span title={riseSource === "diff_rankChange_fallback" ? "上游未提供独立 12h 接口时，用榜单升幅近似" : undefined}>
+            12h 升幅 TOP10 · 与榜单同步
+          </span>
           
           <div className="flex items-center gap-1 ml-2">
             <button
@@ -148,7 +158,7 @@ export function HotOverview({ items, className }: HotOverviewProps) {
             <div className="flex items-center gap-2 mb-3">
               <TrendingUp size={14} className="text-red-500" />
               <h4 className="text-sm font-semibold text-foreground">趋势变化</h4>
-              <span className="text-[10px] text-muted-foreground">（优先显示上升）</span>
+              <span className="text-[10px] text-muted-foreground">（升幅较大优先）</span>
               <span className="text-[10px] text-muted-foreground">({displayTrendItems.length}条)</span>
             </div>
             

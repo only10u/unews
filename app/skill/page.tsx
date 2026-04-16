@@ -21,50 +21,51 @@ export default function SkillPage() {
           href={X_FOLLOW_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-cyan-500 hover:underline"
+          className="text-xs text-amber-400 hover:underline"
         >
           关注 X @10UWINA8
         </a>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 py-10 text-center space-y-8">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight">兜U新闻.skill</h1>
-          <p className="text-muted-foreground text-sm">
-            让 AI Agent 读取本站热搜与 10 分钟趋势变动，与网页「热点速览」数据同源。
-          </p>
-        </div>
-
-        <div className="rounded-xl border border-cyan-500/50 bg-card/80 p-6 text-left space-y-4">
-          <div className="text-center text-sm font-semibold text-cyan-400">
-            接入说明（Skill 文档）
+      <main className="max-w-xl mx-auto px-4 py-10 text-center space-y-6">
+        <div className="inline-block rounded-2xl border-4 border-amber-400 bg-gradient-to-b from-amber-500/25 to-amber-900/20 shadow-[0_0_40px_rgba(251,191,36,0.15)] px-8 py-6 text-left">
+          <div className="rounded-lg bg-amber-950/40 border border-amber-500/50 px-4 py-2 text-center mb-4">
+            <span className="text-2xl font-black tracking-tight text-amber-200 drop-shadow-sm">Skill</span>
           </div>
-          <div className="rounded-lg bg-secondary/80 p-3 font-mono text-xs text-cyan-300 break-all border border-border/50">
+          <p className="text-xs text-amber-200/90 mb-3 text-center">
+            使用说明：让 Agent 按文档调用本站公开 JSON，与「热点速览」数据同源。
+          </p>
+          <div className="rounded-lg bg-amber-950/30 p-3 font-mono text-[11px] text-amber-100 break-all border border-amber-600/40">
             Read {skillUrl} and follow the instructions to call the JSON APIs.
           </div>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-cyan-400/90">
-            <li>用 HTTPS GET 上述文档中列出的接口（返回 JSON）</li>
-            <li>将 <code className="text-foreground/90">/api/trending/diff</code>{" "}
-              用于「10 分钟内排名变动」推送逻辑</li>
-            <li>正文级微博抓取建议配合自建服务使用{" "}
-              <a
-                className="text-primary underline"
-                href="https://github.com/Praeviso/crawl4weibo"
-                target="_blank"
-                rel="noreferrer"
-              >
-                crawl4weibo
-              </a>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-amber-50/95 mt-4">
+            <li>用 HTTPS GET 文档中列出的接口（返回 JSON）</li>
+            <li>
+              将 <code className="text-amber-200 bg-amber-950/50 px-1 rounded">/api/trending/diff</code>{" "}
+              用于趋势与排名变动逻辑（热点速览同源）
             </li>
           </ol>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          文档文件亦可通过{" "}
-          <a href="/dou-u-skill.md" className="text-cyan-500 underline" target="_blank">
+        <p className="text-[13px] text-muted-foreground">
+          文档亦可{" "}
+          <a href="/dou-u-skill.md" className="text-amber-500 underline underline-offset-2" target="_blank">
             /dou-u-skill.md
           </a>{" "}
           直接访问。
+        </p>
+
+        <p className="text-sm text-muted-foreground/90">
+          本 skill 由{" "}
+          <a
+            href={X_FOLLOW_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-semibold text-amber-300 hover:text-amber-200 underline decoration-amber-400/80 underline-offset-4"
+          >
+            小兜
+          </a>{" "}
+          开源使用。
         </p>
       </main>
     </div>

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server"
+import { fetchTrendingPath } from "@/lib/upstream"
 
 export async function GET() {
   try {
-    const res = await fetch("http://1.12.248.87:3003/trending/diff", {
+    const res = await fetchTrendingPath("/api/trending/diff", {
       signal: AbortSignal.timeout(10000),
       cache: "no-store",
     })

@@ -67,6 +67,8 @@ export interface NewsItem {
   rankDelta?: number            // +N means rose N spots, -N means fell
   isBursting?: boolean          // true if rank surged dramatically
   firstSeenAt?: number          // epoch ms when first scraped
+  /** 来自上游的发布时间戳（优先用于排序） */
+  publishedAt?: number
   isOfficial?: boolean          // true if from official/央媒 account
 }
 
@@ -92,6 +94,8 @@ export interface TrendingItem {
   authorAvatar?: string      // top post author avatar (new field name)
   detailContent?: string     // pinned/top post full text
   detailLoaded?: boolean     // whether detail has been fetched
+  /** 上游给出的发布时间（毫秒），新鲜度排序优先 */
+  publishedAt?: number
 }
 
 export interface CryptoPrice {

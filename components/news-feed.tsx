@@ -8,6 +8,7 @@ import {
   type TrendingItem,
   PLATFORM_ICONS,
 } from "@/lib/mock-data"
+import { isPriorityGzhAuthor } from "@/lib/priority-accounts"
 import { NewsCard } from "./news-card"
 import { HotOverview } from "./hot-overview"
 import { VoiceSettingsDialog, speakText, type VoiceSettings, type SoundType } from "./voice-settings"
@@ -203,6 +204,10 @@ function mergeNewsItem(existing: NewsItem | undefined, newItem: NewsItem): NewsI
     imageUrl: isValidString(newItem.imageUrl) ? newItem.imageUrl : existing.imageUrl,
     videoUrl: isValidString(newItem.videoUrl) ? newItem.videoUrl : existing.videoUrl,
     detailContent: isValidString(newItem.detailContent) ? newItem.detailContent : existing.detailContent,
+    publishedAt:
+      typeof newItem.publishedAt === "number"
+        ? newItem.publishedAt
+        : existing.publishedAt,
     // 数组字段：新数组有内容时才替换
     tags: (newItem.tags && newItem.tags.length > 0) ? newItem.tags : existing.tags,
   }
@@ -210,6 +215,10 @@ function mergeNewsItem(existing: NewsItem | undefined, newItem: NewsItem): NewsI
 
 /** 解析原始时间戳字段（支持多种格式） */
 function parseOriginalTimestamp(item: TrendingItem): number | null {
+  const pa = (item as TrendingItem & { publishedAt?: number }).publishedAt
+  if (typeof pa === "number" && pa > 0) {
+    return pa > 1e12 ? pa : pa * 1000
+  }
   // 尝试多种可能的时间戳字段名
   const timeFields = [
     (item as any).pubDate,
@@ -328,7 +337,9 @@ function trendingToNewsItems(
         firstSeenMap.set(id, firstSeenAt)
       }
     }
-    const timestamp = formatRelativeTime(firstSeenAt)
+    // 优先用上游发布时间排序（与「最新在上」一致）
+    const publishedAt = originalTimestamp ?? firstSeenAt
+    const timestamp = formatRelativeTime(publishedAt)
 
     // Use real enriched author data from API (prefer API author over generic platform default)
     const authorName = item.authorName || item.topAuthor || auth.name
@@ -362,6 +373,7 @@ function trendingToNewsItems(
       rankDelta: delta,
       isBursting: item.isBurst || delta >= 5,
       firstSeenAt,
+      publishedAt,
       isOfficial: auth.isOfficial && item.rank <= 5,
     }
     
@@ -422,6 +434,7 @@ async function trendingFetcher(platform: string): Promise<TrendingItem[]> {
             // 头像：覆盖更多可能的字段名，包括user对象
             topAuthorAvatar: item.authorAvatar || item.topAuthorAvatar || item.avatar || item.user?.profile_image_url || item.user?.avatar || "",
             detailContent: item.detailContent || "",
+            publishedAt: (item as { publishedAt?: number }).publishedAt,
           })
         )
       }
@@ -667,9 +680,32 @@ export function NewsFeed({
     const userPinned = all.filter((item) => pinnedIds.has(item.id))
     const unpinned = all.filter((item) => !pinnedIds.has(item.id))
 
-    // Sort unpinned by composite score
-    unpinned.sort((a, b) => computeCompositeScore(b) - computeCompositeScore(a))
-    userPinned.sort((a, b) => computeCompositeScore(b) - computeCompositeScore(a))
+    const byRecency = (a: NewsItem, b: NewsItem) =>
+      (b.publishedAt ?? b.firstSeenAt ?? 0) - (a.publishedAt ?? a.firstSeenAt ?? 0)
+    const byAgg = (a: NewsItem, b: NewsItem) => {
+      const pa = a.platform === "gongzhonghao" && isPriorityGzhAuthor(a.author)
+      const pb = b.platform === "gongzhonghao" && isPriorityGzhAuthor(b.author)
+      if (pa !== pb) return pa ? -1 : 1
+      const da = a.platform === "gongzhonghao" && !isPriorityGzhAuthor(a.author)
+      const db = b.platform === "gongzhonghao" && !isPriorityGzhAuthor(b.author)
+      if (da !== db) return da ? 1 : -1
+      return byRecency(a, b)
+    }
+    const byGzhTab = (a: NewsItem, b: NewsItem) => {
+      const pa = isPriorityGzhAuthor(a.author)
+      const pb = isPriorityGzhAuthor(b.author)
+      if (pa !== pb) return pa ? -1 : 1
+      return byRecency(a, b)
+    }
+
+    if (activeChannel === "aggregate") {
+      unpinned.sort(byAgg)
+    } else if (activeChannel === "gongzhonghao") {
+      unpinned.sort(byGzhTab)
+    } else {
+      unpinned.sort(byRecency)
+    }
+    userPinned.sort(byRecency)
 
     // Build display list: pinned first, then the rest
     const items: { item: NewsItem; isPinned: boolean; compositeScore: number }[] = []
@@ -677,57 +713,8 @@ export function NewsFeed({
       items.push({ item: p, isPinned: true, compositeScore: computeCompositeScore(p) })
     }
 
-    // 聚合板块特殊排序：公众号/抖音优先前5-10位，微博前3穿插到3/6/9位
-    if (activeChannel === "aggregate" && unpinned.length > 0) {
-      // 分离三个平台
-      const weiboItems = unpinned.filter(i => i.platform === "weibo")
-      const douyinItems = unpinned.filter(i => i.platform === "douyin")
-      const gzhItems = unpinned.filter(i => i.platform === "gongzhonghao")
-      
-      // 取各平台前N条
-      const topWeibo = weiboItems.slice(0, 3)  // 微博前3
-      const topDouyin = douyinItems.slice(0, 5)  // 抖音前5
-      const topGzh = gzhItems.slice(0, 5)  // 公众号前5
-      
-      // 剩余内容按热度混排
-      const usedIds = new Set([...topWeibo, ...topDouyin, ...topGzh].map(i => i.id))
-      const remaining = unpinned.filter(i => !usedIds.has(i.id))
-      
-      // 构建前10位：公众号/抖音交替填充，微博穿插到3/6/9位
-      const front10: NewsItem[] = []
-      let dyIdx = 0, gzhIdx = 0, wbIdx = 0
-      
-      for (let pos = 1; pos <= 10; pos++) {
-        // 微博穿插到第3、6、9位
-        if ((pos === 3 || pos === 6 || pos === 9) && wbIdx < topWeibo.length) {
-          front10.push(topWeibo[wbIdx++])
-        } else {
-          // 其他位置：公众号和抖音交替
-          if (pos % 2 === 1 && gzhIdx < topGzh.length) {
-            front10.push(topGzh[gzhIdx++])
-          } else if (dyIdx < topDouyin.length) {
-            front10.push(topDouyin[dyIdx++])
-          } else if (gzhIdx < topGzh.length) {
-            front10.push(topGzh[gzhIdx++])
-          } else if (wbIdx < topWeibo.length) {
-            front10.push(topWeibo[wbIdx++])
-          }
-        }
-      }
-      
-      // 添加未使用的top条目
-      const front10Ids = new Set(front10.map(i => i.id))
-      const unusedTop = [...topWeibo, ...topDouyin, ...topGzh].filter(i => !front10Ids.has(i.id))
-      
-      // 最终列表：前10 + 未使用的top + 剩余混排
-      const finalList = [...front10, ...unusedTop, ...remaining]
-      for (const s of finalList) {
-        items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
-      }
-    } else {
-      for (const s of unpinned) {
-        items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
-      }
+    for (const s of unpinned) {
+      items.push({ item: s, isPinned: false, compositeScore: computeCompositeScore(s) })
     }
 
     // 临时置顶：将tempTopIds中的项目移到顶部（置顶项之后）

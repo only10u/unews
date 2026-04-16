@@ -1,19 +1,27 @@
 import { NextResponse } from "next/server"
-import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
+import { fetchTrendingPath } from "@/lib/upstream"
+import { mergeWithEnrichLayer, parsePublishedMsFromRaw } from "@/lib/trending-enrich"
 
 // Returns NewsItem[] format for frontend
 export async function GET() {
   try {
-    const res = await fetch(`${UPSTREAM_TRENDING_3001}/api/trending/douyin`, {
+    const res = await fetchTrendingPath("/api/trending/douyin", {
       next: { revalidate: 300 },
       signal: AbortSignal.timeout(25000),
     })
     if (!res.ok) throw new Error(`upstream ${res.status}`)
-    const raw = await res.json()
-    
+    const rawData = await res.json()
+    const rawList = Array.isArray(rawData)
+      ? rawData
+      : (rawData as { data?: unknown })?.data
+    if (!Array.isArray(rawList)) {
+      console.error("[DOUYIN-API] upstream not array:", typeof rawData)
+      return NextResponse.json([], { status: 200 })
+    }
+
     // Map to NewsItem format expected by frontend
     // 扩展字段映射，覆盖抖音API可能的各种字段名
-    const data = raw.map((item: any, i: number) => ({
+    const data = rawList.map((item: any, i: number) => ({
       id: `d${i + 1}`,
       title: item.title || item.word || item.hot_sentence || "",
       hotValue: item.hotValue || item.hot_value || item.view_count || 0,
@@ -34,16 +42,23 @@ export async function GET() {
       // 正文：覆盖多种可能的字段名
       summary: item.desc || item.description || item.excerpt || item.summary || item.content || item.sentence_tag || "",
       platformRank: item.rank || item.position || i + 1,
+      detailContent: item.detailContent || item.share_info?.share_title || "",
+      publishedAt: parsePublishedMsFromRaw(item),
+    }))
+
+    const merged = (await mergeWithEnrichLayer(
+      "douyin",
+      data as Record<string, unknown>[]
+    )) as typeof data
+
+    console.log("[DOUYIN-API] returning", merged.length, "items, sample:", JSON.stringify({
+      title: merged[0]?.title?.substring(0, 20),
+      imageUrl: merged[0]?.imageUrl?.substring(0, 50),
+      author: merged[0]?.author,
+      platformRank: merged[0]?.platformRank,
     }))
     
-    console.log("[DOUYIN-API] returning", data.length, "items, sample:", JSON.stringify({
-      title: data[0]?.title?.substring(0, 20),
-      imageUrl: data[0]?.imageUrl?.substring(0, 50),
-      author: data[0]?.author,
-      platformRank: data[0]?.platformRank,
-    }))
-    
-    return NextResponse.json(data, {
+    return NextResponse.json(merged, {
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
       },

@@ -287,6 +287,27 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
             </div>
           </div>
 
+          {/* 发布者：头像 + 名称（与榜单摘要区一致） */}
+          {(isValidString(item.author) || isValidString(avatarUrl)) && (
+            <div className="flex items-center gap-2 mb-2 min-w-0">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="w-8 h-8 rounded-full object-cover shrink-0 border border-border/40"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none"
+                  }}
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
+                  {(item.author || "?")[0]}
+                </div>
+              )}
+              <span className="text-sm font-semibold text-foreground truncate">{item.author || "—"}</span>
+            </div>
+          )}
+
           {/* 标题 - 加粗加大，使用 text-foreground 适配日夜模式 */}
           <h3 
             className="font-bold leading-tight mb-2 text-balance sm:text-lg text-foreground"
@@ -398,7 +419,7 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
             </a>
           )}
 
-          {/* 正文摘要 - 3行截断，字体大小由 fontSize prop 控制 */}
+          {/* 正文摘要 - 约 100 字+、最多 5 行 */}
           {isValidString(contentText) && (
             <p 
               className="mb-3"
@@ -408,7 +429,7 @@ export function NewsCard({ item, isNew, isTempTop, isPinned, onTogglePin, onHide
                 lineHeight: '1.6',
                 overflow: 'hidden',
                 display: '-webkit-box',
-                WebkitLineClamp: 3,
+                WebkitLineClamp: 5,
                 WebkitBoxOrient: 'vertical',
               }}
             >

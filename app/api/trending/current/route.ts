@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server"
+import { fetchTrendingPath } from "@/lib/upstream"
 
 export async function GET() {
   try {
-    const res = await fetch("http://1.12.248.87:3003/trending/current", {
+    let res = await fetchTrendingPath("/api/trending/current", {
       signal: AbortSignal.timeout(10000),
       cache: "no-store",
     })
+    if (!res.ok) {
+      res = await fetchTrendingPath("/trending/current", {
+        signal: AbortSignal.timeout(10000),
+        cache: "no-store",
+      })
+    }
     if (!res.ok) {
       return NextResponse.json({ error: `upstream ${res.status}` }, { status: res.status })
     }

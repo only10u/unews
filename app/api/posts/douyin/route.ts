@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
+import { fetchTrendingPath } from "@/lib/upstream"
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -7,10 +7,9 @@ export async function GET(request: Request) {
   if (!keyword) return NextResponse.json({ success: false, error: "keyword required" })
 
   try {
-    const res = await fetch(
-      `${UPSTREAM_TRENDING_3001}/api/trending/douyin`,
-      { next: { revalidate: 300 } }
-    )
+    const res = await fetchTrendingPath("/api/trending/douyin", {
+      next: { revalidate: 300 },
+    })
     const list = await res.json() // 数组
     
     // 优先精确匹配，其次模糊匹配

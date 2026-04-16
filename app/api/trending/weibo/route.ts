@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
-import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
+import { fetchTrendingPath } from "@/lib/upstream"
+import { mergeWithEnrichLayer, parsePublishedMsFromRaw } from "@/lib/trending-enrich"
 
 export const dynamic = "force-dynamic"
 
 // Returns NewsItem[] format for frontend
 export async function GET() {
   try {
-    const url = `${UPSTREAM_TRENDING_3001}/api/trending/weibo`
-    const res = await fetch(url, {
+    const res = await fetchTrendingPath("/api/trending/weibo", {
       cache: "no-store",
       signal: AbortSignal.timeout(25000),
     })
@@ -15,7 +15,7 @@ export async function GET() {
     const rawData = await res.json()
     const list = Array.isArray(rawData) ? rawData : (rawData as { data?: unknown })?.data
     if (!Array.isArray(list)) {
-      console.error("[WEIBO-API] upstream not array:", url, typeof rawData)
+      console.error("[WEIBO-API] upstream not array:", typeof rawData)
       return NextResponse.json([], { status: 200 })
     }
 
@@ -33,12 +33,15 @@ export async function GET() {
     
     // Map to NewsItem format expected by frontend
     // 扩展字段映射，覆盖微博API可能的各种字段名
-    // 过滤后重新编号，确保排名连续
-    const data = filtered.map((item: any, i: number) => ({
+    // 过滤后重新编号，确保排名连续；最多 25 条，真实名次优先 realpos
+    const WEIBO_CAP = 25
+    const trimmed = filtered.slice(0, WEIBO_CAP)
+    const data = trimmed.map((item: any, i: number) => ({
       id: `w${i + 1}`,
       title: item.title || item.word || item.note || "",
       hotValue: item.hotValue || item.hot_num || item.num || 0,
       url: item.url || item.link || item.scheme || "",
+      detailContent: item.detailContent || item.full_text || item.long_text || "",
       // 图片：覆盖多种可能的字段名
       imageUrl: item.pic || item.pic_url || item.image || item.imageUrl || item.cover || item.icon || "",
       videoUrl: item.videoUrl || item.video_url || "",
@@ -52,17 +55,23 @@ export async function GET() {
       authorAvatar: item.user?.profile_image_url || item.user?.avatar_large || item.user?.avatar || item.authorAvatar || item.topAuthorAvatar || item.icon_url || "",
       // 正文：覆盖多种可能的字段名
       summary: item.text || item.content || item.desc || item.summary || item.excerpt || item.label_name || "",
-      platformRank: item.rank || item.realpos || i + 1,
+      platformRank: Number(item.realpos ?? item.rank ?? item.position ?? i + 1) || i + 1,
+      publishedAt: parsePublishedMsFromRaw(item),
+    }))
+
+    const merged = (await mergeWithEnrichLayer(
+      "weibo",
+      data as Record<string, unknown>[]
+    )) as typeof data
+
+    console.log("[WEIBO-API] returning", merged.length, "items, sample:", JSON.stringify({
+      title: merged[0]?.title?.substring(0, 20),
+      imageUrl: merged[0]?.imageUrl?.substring(0, 50),
+      author: merged[0]?.author,
+      platformRank: merged[0]?.platformRank,
     }))
     
-    console.log("[WEIBO-API] returning", data.length, "items, sample:", JSON.stringify({
-      title: data[0]?.title?.substring(0, 20),
-      imageUrl: data[0]?.imageUrl?.substring(0, 50),
-      author: data[0]?.author,
-      platformRank: data[0]?.platformRank,
-    }))
-    
-    return NextResponse.json(data, {
+    return NextResponse.json(merged, {
       headers: {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
       },

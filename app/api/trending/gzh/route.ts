@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server"
-import { UPSTREAM_TRENDING_3001 } from "@/lib/upstream"
+import { fetchTrendingPath } from "@/lib/upstream"
+import { isPriorityGzhAuthor } from "@/lib/priority-accounts"
+import { mergeWithEnrichLayer, parsePublishedMsFromRaw } from "@/lib/trending-enrich"
 
 export const dynamic = "force-dynamic"
 
 // Returns NewsItem[] format for frontend
 export async function GET() {
   try {
-    const url = `${UPSTREAM_TRENDING_3001}/api/trending/gzh`
-    const res = await fetch(url, {
+    const res = await fetchTrendingPath("/api/trending/gzh", {
       cache: "no-store",
       signal: AbortSignal.timeout(25000),
     })
@@ -15,13 +16,13 @@ export async function GET() {
     const raw = await res.json()
     const list = Array.isArray(raw) ? raw : (raw as { data?: unknown })?.data
     if (!Array.isArray(list)) {
-      console.error("[GZH-API] upstream not array:", url, typeof raw)
+      console.error("[GZH-API] upstream not array:", typeof raw)
       return NextResponse.json([], { status: 200 })
     }
 
     // Map to NewsItem format expected by frontend
     // 扩展字段映射，覆盖公众号API可能的各种字段名
-    const data = list.map((item: any, i: number) => ({
+    const mapped = list.map((item: any, i: number) => ({
       id: `g${i + 1}`,
       title: item.title || item.name || "",
       hotValue: item.hotValue || item.reading_count || item.read_num || 0,
@@ -40,8 +41,22 @@ export async function GET() {
       // 正文：覆盖更多可能的字段名
       summary: item.digest || item.abstract || item.desc || item.description || item.content_intro || item.content || item.summary || item.excerpt || item.intro || item.text || "",
       platformRank: item.rank || i + 1,
+      detailContent: item.detailContent || item.content_html || "",
+      publishedAt: parsePublishedMsFromRaw(item),
     }))
-    
+
+    const enriched = (await mergeWithEnrichLayer(
+      "gzh",
+      mapped as Record<string, unknown>[]
+    )) as typeof mapped
+
+    const data = [...enriched].sort((a, b) => {
+      const pa = isPriorityGzhAuthor(a.author) ? 1 : 0
+      const pb = isPriorityGzhAuthor(b.author) ? 1 : 0
+      if (pb !== pa) return pb - pa
+      return (b.hotValue || 0) - (a.hotValue || 0)
+    })
+
     console.log("[GZH-API] returning", data.length, "items, sample:", JSON.stringify({
       title: data[0]?.title?.substring(0, 20),
       imageUrl: data[0]?.imageUrl?.substring(0, 50),
